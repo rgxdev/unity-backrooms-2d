@@ -1,17 +1,22 @@
 import Phaser from "phaser";
 import {
   COLORS,
+  FLOOR_VARIANTS,
   LEVEL_STYLES,
   MONSTER,
   PLAYER,
   SCENES,
   STYLE_COLORS,
+  STYLE_PROPS,
   TEXTURES,
   TILE_SIZE,
   WALL_MASK,
   WALL_MASK_COUNT,
+  WALL_VARIANTS,
+  type PropKind,
   type StyleColorSet,
 } from "@/game/config/constants";
+import { hash01 } from "@/game/util/hash";
 
 type Facing = "front" | "back";
 
@@ -41,13 +46,21 @@ export class PreloadScene extends Phaser.Scene {
   private generateTextures(): void {
     for (const style of LEVEL_STYLES) {
       const c = STYLE_COLORS[style];
-      this.makeFloor(TEXTURES.floor(style), c);
+      for (let variant = 0; variant < FLOOR_VARIANTS; variant++) {
+        this.makeFloor(TEXTURES.floor(style, variant), c, variant);
+      }
       this.makeWallCrack(TEXTURES.wallCrack(style), c);
       this.makeExit(TEXTURES.exit(style), c);
       for (let mask = 0; mask < WALL_MASK_COUNT; mask++) {
-        this.makeWallVariant(TEXTURES.wall(style, mask), c, mask);
+        for (let variant = 0; variant < WALL_VARIANTS; variant++) {
+          this.makeWallVariant(TEXTURES.wall(style, mask, variant), c, mask, variant);
+        }
+      }
+      for (const kind of STYLE_PROPS[style]) {
+        this.makeProp(TEXTURES.prop(kind), kind, c);
       }
     }
+    this.makeAlmondWater(TEXTURES.almondWater);
     this.makePlayer(TEXTURES.player, "front", false);
     this.makePlayer(TEXTURES.playerWalk, "front", true);
     this.makePlayer(TEXTURES.playerBack, "back", false);
@@ -93,13 +106,10 @@ export class PreloadScene extends Phaser.Scene {
     g.fillRect(x, y + 1, w, h - 2);
   }
 
-  /** Deterministic pseudo-random 0..1 from integer coordinates — cheap dither
-   *  noise so tiled textures don't look like a stamped-out repeating block. */
+  /** Cheap dither noise so tiled textures don't look like a stamped-out
+   *  repeating block — see {@link hash01}. */
   private noise(x: number, y: number): number {
-    let h = (x * 374761393 + y * 668265263) | 0;
-    h = (h ^ (h >>> 13)) * 1274126177;
-    h ^= h >>> 16;
-    return ((h >>> 0) % 1000) / 1000;
+    return hash01(x, y);
   }
 
   /**
@@ -109,8 +119,13 @@ export class PreloadScene extends Phaser.Scene {
    * is periodic within the tile so edges line up perfectly from one stamp to
    * the next, and the only variation is fine speckle dither — small grain,
    * not a grid of blocks.
+   *
+   * `variant` scatters three baked looks across the level (picked per-tile
+   * by {@link MainScene}, not random per frame): 0 is the clean baseline, 1
+   * layers in heavier wear, and 2 adds one deliberately unsettling stain —
+   * so a floor doesn't read as one texture endlessly stamped.
    */
-  private makeFloor(key: string, c: StyleColorSet): void {
+  private makeFloor(key: string, c: StyleColorSet, variant: number): void {
     const g = this.make.graphics({ x: 0, y: 0 }, false);
     const t = TILE_SIZE;
     this.px(g, c.floor, 0, 0, t, t);
@@ -152,13 +167,27 @@ export class PreloadScene extends Phaser.Scene {
     }
 
     // Fine speckle dither — small grain, breaks up the pattern into
-    // something that reads as "pixels", not a flat stamped block.
+    // something that reads as "pixels", not a flat stamped block. Variant 1+
+    // widens the thresholds for a noticeably grimier floor.
+    const speckleHi = variant >= 1 ? 0.88 : 0.93;
+    const speckleLo = variant >= 1 ? 0.09 : 0.05;
     for (let y = 0; y < t; y++) {
       for (let x = 0; x < t; x++) {
         const n = this.noise(x, y + c.seed);
-        if (n > 0.93) this.px(g, c.floorWeaveHi, x, y, 1, 1, 0.35);
-        else if (n < 0.05) this.px(g, c.floorStain, x, y, 1, 1, 0.3);
+        if (n > speckleHi) this.px(g, c.floorWeaveHi, x, y, 1, 1, 0.35);
+        else if (n < speckleLo) this.px(g, c.floorStain, x, y, 1, 1, 0.3);
       }
+    }
+
+    if (variant === 2) {
+      // One deliberately wrong-looking spill — a spreading stain trailing
+      // toward an edge, unrelated to the tile's real wear pattern.
+      g.fillStyle(c.floorStain, 0.55);
+      g.fillEllipse(18, 17, 15, 11);
+      g.fillStyle(c.floorStain, 0.4);
+      g.fillEllipse(23, 22, 9, 7);
+      g.fillStyle(c.floorStain, 0.28);
+      g.fillEllipse(26, 26, 5, 4);
     }
 
     g.generateTexture(key, t, t);
@@ -170,8 +199,17 @@ export class PreloadScene extends Phaser.Scene {
    * (base fill, pattern detail, speckle grain) — factored out so the 16
    * autotile masks and the dressed exit-niche crack tile stay pixel-for-pixel
    * consistent with each other.
+   *
+   * `variant` scatters extra wear across the level the same way
+   * {@link makeFloor} does: 0 is the clean baseline, 1 is grimier, and 2 adds
+   * one unsettling detail specific to the material (a mildew bloom, exposed
+   * rebar, a pipe leak, a hairline crack, a scorch mark).
    */
-  private drawWallSurface(g: Phaser.GameObjects.Graphics, c: StyleColorSet): void {
+  private drawWallSurface(
+    g: Phaser.GameObjects.Graphics,
+    c: StyleColorSet,
+    variant = 0,
+  ): void {
     const t = TILE_SIZE;
     this.px(g, c.wall, 0, 0, t, t);
 
@@ -206,11 +244,82 @@ export class PreloadScene extends Phaser.Scene {
         break;
     }
 
+    // Speckle grain — variant 1+ is noticeably filthier.
+    const speckleHi = variant >= 1 ? 0.89 : 0.94;
+    const speckleLo = variant >= 1 ? 0.09 : 0.05;
     for (let y = 0; y < t; y++) {
       for (let x = 0; x < t; x++) {
         const n = this.noise(x + c.seed, y + c.seed);
-        if (n > 0.94) this.px(g, c.wallSpeckleHi, x, y, 1, 1, 0.5);
-        else if (n < 0.05) this.px(g, c.wallSpeckleLo, x, y, 1, 1, 0.4);
+        if (n > speckleHi) this.px(g, c.wallSpeckleHi, x, y, 1, 1, 0.5);
+        else if (n < speckleLo) this.px(g, c.wallSpeckleLo, x, y, 1, 1, 0.4);
+      }
+    }
+
+    if (variant === 2) this.drawWallCreepyDetail(g, c);
+  }
+
+  /**
+   * One deliberately unsettling detail, specific to the wall material —
+   * baked into variant 2 of every mask so it's rare (roughly a third of the
+   * map's walls) rather than omnipresent.
+   */
+  private drawWallCreepyDetail(g: Phaser.GameObjects.Graphics, c: StyleColorSet): void {
+    const t = TILE_SIZE;
+    switch (c.wallPattern) {
+      case "wallpaper": {
+        // A dark bloom of mildew, with a faint five-point handprint smudge
+        // beside it — something touched this wall.
+        g.fillStyle(c.wallSpeckleLo, 0.5);
+        g.fillEllipse(9, 12, 10, 8);
+        g.fillEllipse(12, 17, 6, 5);
+        const hx = 22;
+        const hy = 20;
+        this.px(g, c.wallDark, hx, hy, 2, 5, 0.3);
+        this.px(g, c.wallDark, hx + 3, hy - 1, 2, 6, 0.3);
+        this.px(g, c.wallDark, hx + 6, hy, 2, 5, 0.3);
+        this.px(g, c.wallDark, hx - 2, hy + 4, 5, 3, 0.28);
+        break;
+      }
+      case "concrete": {
+        // A crumbled chip exposing a stub of rusted rebar.
+        this.rr(g, c.wallDark, 12, 10, 8, 6, 0.85);
+        this.px(g, COLORS.rebarRust, 14, 8, 1, 11, 0.9);
+        this.px(g, COLORS.rebarRust, 17, 9, 1, 10, 0.85);
+        this.px(g, c.wallShade, 13, 15, 6, 2, 0.5);
+        break;
+      }
+      case "pipes": {
+        // A dark leak stain dripping from the lower pipe down the wall.
+        this.px(g, c.accent2, 14, 23, 3, 9, 0.55);
+        g.fillStyle(c.accent2, 0.4);
+        g.fillEllipse(15, 30, 6, 3);
+        this.px(g, c.wallDark, 15, 26, 1, 5, 0.5);
+        break;
+      }
+      case "tile": {
+        // A hairline crack, and a faint algae smear near the grout.
+        const crack: Array<[number, number]> = [[6, 4], [9, 9], [7, 14], [11, 19], [9, 25]];
+        for (let i = 0; i < crack.length - 1; i++) {
+          const [x0, y0] = crack[i]!;
+          const [x1, y1] = crack[i + 1]!;
+          const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+          for (let s = 0; s <= steps; s++) {
+            const x = Math.round(x0 + ((x1 - x0) * s) / steps);
+            const y = Math.round(y0 + ((y1 - y0) * s) / steps);
+            this.px(g, c.wallDark, x, y, 1, 1, 0.6);
+          }
+        }
+        g.fillStyle(c.accent2, 0.22);
+        g.fillEllipse(22, 20, 8, 12);
+        break;
+      }
+      case "hazard": {
+        // A scorch smudge licking up from the tape band.
+        g.fillStyle(c.wallDark, 0.5);
+        g.fillEllipse(t / 2, t - 14, 14, 10);
+        g.fillStyle(c.accent2, 0.4);
+        g.fillEllipse(t / 2, t - 10, 9, 7);
+        break;
       }
     }
   }
@@ -224,7 +333,12 @@ export class PreloadScene extends Phaser.Scene {
    * shows a per-tile outline. A fully-open mask (a lone pillar) gets trim on
    * all four sides and reads as a distinct column, exactly as it should.
    */
-  private makeWallVariant(key: string, c: StyleColorSet, mask: number): void {
+  private makeWallVariant(
+    key: string,
+    c: StyleColorSet,
+    mask: number,
+    variant: number,
+  ): void {
     const g = this.make.graphics({ x: 0, y: 0 }, false);
     const t = TILE_SIZE;
     const north = (mask & WALL_MASK.NORTH) !== 0;
@@ -232,7 +346,7 @@ export class PreloadScene extends Phaser.Scene {
     const south = (mask & WALL_MASK.SOUTH) !== 0;
     const west = (mask & WALL_MASK.WEST) !== 0;
 
-    this.drawWallSurface(g, c);
+    this.drawWallSurface(g, c, variant);
 
     // Two-step bevel, drawn only on faces that actually border a room —
     // this is what makes a bank of walls read as one connected mass instead
@@ -315,6 +429,173 @@ export class PreloadScene extends Phaser.Scene {
       this.rr(g, COLORS.rubbleShade, x, y, w, h, 0.95);
       this.px(g, COLORS.rubbleDark, x, y + h - 1, w, 1, 0.6);
     }
+    g.generateTexture(key, t, t);
+    g.destroy();
+  }
+
+  /** Props that sit flush with the floor (decals) skip the drop shadow every
+   *  other prop gets to read as a raised object. */
+  private static readonly FLUSH_PROPS: ReadonlySet<PropKind> = new Set([
+    "drain",
+    "crack",
+  ]);
+
+  /**
+   * Small scattered set-dressing prop — pure decoration (no collider),
+   * two per style (see {@link STYLE_PROPS}), scattered sparsely across floor
+   * tiles by MainScene. Gives each level a bit of "someone/something was
+   * here" texture beyond the walls and floor.
+   */
+  private makeProp(key: string, kind: PropKind, c: StyleColorSet): void {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    const t = TILE_SIZE;
+
+    if (!PreloadScene.FLUSH_PROPS.has(kind)) {
+      g.fillStyle(COLORS.shadow, 0.25);
+      g.fillEllipse(t / 2, t - 8, 16, 4);
+    }
+
+    switch (kind) {
+      case "chair":
+        // An overturned chair — seat on its side, legs splayed.
+        this.rr(g, COLORS.propWood, 8, 13, 15, 6, 1);
+        this.rr(g, COLORS.propWoodDark, 20, 7, 5, 14, 1);
+        this.px(g, COLORS.propWoodDark, 6, 12, 1, 8, 0.8);
+        this.px(g, COLORS.propWoodDark, 22, 20, 1, 7, 0.8);
+        this.px(g, COLORS.propWoodDark, 12, 20, 1, 6, 0.8);
+        break;
+      case "boxes":
+        // A small stack of taped cardboard boxes.
+        this.rr(g, COLORS.propCardboard, 7, 9, 13, 11, 1);
+        this.px(g, COLORS.propCardboardDark, 7, 13, 13, 1, 0.7);
+        this.px(g, COLORS.propCardboardDark, 12, 9, 1, 11, 0.5);
+        this.rr(g, COLORS.propCardboard, 17, 16, 9, 8, 1);
+        this.px(g, COLORS.propCardboardDark, 17, 19, 9, 1, 0.7);
+        break;
+      case "crate":
+        // A wooden crate, top-down, cross-planked lid.
+        this.rr(g, COLORS.propWood, 8, 8, 17, 17, 1);
+        this.px(g, COLORS.propWoodDark, 8, 8, 17, 2, 0.6);
+        this.px(g, COLORS.propWoodDark, 8, 23, 17, 2, 0.6);
+        this.px(g, COLORS.propWoodDark, 9, 9, 2, 15, 0.5);
+        this.px(g, COLORS.propWoodDark, 22, 9, 2, 15, 0.5);
+        break;
+      case "barrel": {
+        // A metal drum, top-down: rings and a rusted band.
+        g.fillStyle(COLORS.propMetal, 1);
+        g.fillEllipse(16, 17, 16, 15);
+        g.fillStyle(COLORS.propMetalDark, 1);
+        g.fillEllipse(16, 17, 10, 9);
+        g.lineStyle(2, c.accent, 0.8);
+        g.strokeEllipse(16, 17, 14, 13);
+        break;
+      }
+      case "valve": {
+        // A pipe valve wheel bolted to the floor — spokes around a rusted hub.
+        g.fillStyle(COLORS.propMetal, 1);
+        g.fillEllipse(16, 17, 15, 14);
+        g.lineStyle(2, COLORS.propMetalDark, 0.9);
+        g.strokeEllipse(16, 17, 15, 14);
+        const spokes: Array<[number, number]> = [
+          [0, -6],
+          [0, 6],
+          [-6, 0],
+          [6, 0],
+        ];
+        for (const [dx, dy] of spokes) {
+          this.px(g, COLORS.propMetalDark, 16 + dx - 1, 17 + dy - 1, 2, 2, 0.8);
+        }
+        g.fillStyle(c.accent, 1);
+        g.fillEllipse(16, 17, 5, 5);
+        break;
+      }
+      case "pipecart": {
+        // A low handcart loaded with spare pipe segments.
+        this.rr(g, COLORS.propMetalDark, 7, 18, 18, 6, 1);
+        this.px(g, COLORS.propMetal, 9, 25, 3, 3, 1);
+        this.px(g, COLORS.propMetal, 20, 25, 3, 3, 1);
+        for (const px of [9, 15, 21]) {
+          this.px(g, c.accent, px, 9, 5, 9, 1);
+          this.px(g, c.accent2, px, 9, 5, 2, 0.6);
+        }
+        break;
+      }
+      case "drain": {
+        // A flush floor drain grate.
+        g.fillStyle(c.accent2, 0.5);
+        g.fillEllipse(16, 16, 15, 15);
+        g.fillStyle(COLORS.propMetalDark, 1);
+        g.fillEllipse(16, 16, 12, 12);
+        for (let i = 0; i < 4; i++) {
+          this.px(g, COLORS.propMetal, 11, 12 + i * 3, 10, 1, 0.7);
+        }
+        break;
+      }
+      case "crack": {
+        // A flush hairline floor crack with a faint algae tinge.
+        const pts: Array<[number, number]> = [[6, 8], [10, 13], [8, 18], [14, 23], [12, 28]];
+        for (let i = 0; i < pts.length - 1; i++) {
+          const [x0, y0] = pts[i]!;
+          const [x1, y1] = pts[i + 1]!;
+          const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+          for (let s = 0; s <= steps; s++) {
+            const x = Math.round(x0 + ((x1 - x0) * s) / steps);
+            const y = Math.round(y0 + ((y1 - y0) * s) / steps);
+            this.px(g, c.wallDark, x, y, 1, 1, 0.55);
+          }
+        }
+        g.fillStyle(c.accent, 0.18);
+        g.fillEllipse(18, 20, 10, 14);
+        break;
+      }
+      case "sign": {
+        // A yellow hazard sign leaning against a support pole.
+        this.px(g, COLORS.propMetalDark, 15, 10, 2, 18, 1);
+        g.fillStyle(COLORS.propSignBg, 1);
+        g.fillTriangle(16, 6, 8, 20, 24, 20);
+        g.fillStyle(COLORS.propSignDark, 1);
+        this.px(g, COLORS.propSignDark, 15, 11, 2, 6, 1);
+        this.px(g, COLORS.propSignDark, 15, 18, 2, 2, 1);
+        break;
+      }
+      case "scorchpile": {
+        // A charred, blackened debris pile with a few glowing embers.
+        this.rr(g, COLORS.propSignDark, 8, 17, 16, 8, 0.95);
+        this.rr(g, c.wallDark, 11, 13, 11, 7, 0.9);
+        this.px(g, c.accent, 14, 18, 1, 1, 0.9);
+        this.px(g, c.accent, 18, 20, 1, 1, 0.8);
+        this.px(g, c.accent, 12, 22, 1, 1, 0.7);
+        break;
+      }
+    }
+
+    g.generateTexture(key, t, t);
+    g.destroy();
+  }
+
+  /**
+   * The Almond Water pickup — a small glowing bottle, the Backrooms survival
+   * staple. Deliberately bright against every level's palette so it always
+   * reads as "notice me", with a soft pulsing halo baked in at low alpha
+   * (the scene layers a live tween on top for the actual pulse).
+   */
+  private makeAlmondWater(key: string): void {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    const t = TILE_SIZE;
+
+    g.fillStyle(COLORS.almondGlow, 0.25);
+    g.fillEllipse(t / 2, t / 2 + 2, 20, 20);
+    g.fillStyle(COLORS.shadow, 0.3);
+    g.fillEllipse(t / 2, t - 7, 10, 3);
+
+    // Bottle body, neck, and a splash of liquid visible through the glass.
+    this.rr(g, COLORS.almondGlass, 12, 12, 8, 14, 1);
+    this.px(g, COLORS.almondGlassHi, 13, 13, 2, 12, 0.6);
+    this.px(g, COLORS.almondGlass, 14, 6, 4, 7, 1);
+    this.px(g, COLORS.almondLabel, 12, 18, 8, 4, 0.9);
+    this.px(g, COLORS.almondLiquid, 13, 20, 6, 5, 0.85);
+    this.px(g, COLORS.propMetalDark, 13, 5, 6, 2, 1);
+
     g.generateTexture(key, t, t);
     g.destroy();
   }

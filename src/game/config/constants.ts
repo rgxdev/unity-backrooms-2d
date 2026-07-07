@@ -170,7 +170,57 @@ export interface StyleColorSet {
   accent: number;
   /** Secondary pattern-specific detail colour (pipe shadow / hazard tape 2). */
   accent2: number;
+  /** Colour a monster's neutral tint is subtly blended toward on this level —
+   *  same silhouette everywhere, but each level's threat feels faintly "of
+   *  the place" it lurks in. */
+  monsterMood: number;
 }
+
+/** How many baked variants exist per wall (style, mask) and per floor style —
+ *  variant 0 is always the clean baseline; the rest layer in extra grime and
+ *  one deliberately unsettling detail (see {@link PreloadScene}) so a level
+ *  doesn't read as one texture stamped everywhere. */
+export const WALL_VARIANTS = 3;
+export const FLOOR_VARIANTS = 3;
+
+/** Small scattered set-dressing props, two per style — pure decoration
+ *  (no collider), placed sparsely across floor tiles. */
+export type PropKind =
+  | "chair"
+  | "boxes"
+  | "crate"
+  | "barrel"
+  | "valve"
+  | "pipecart"
+  | "drain"
+  | "crack"
+  | "sign"
+  | "scorchpile";
+
+export const STYLE_PROPS: Record<LevelStyle, readonly [PropKind, PropKind]> = {
+  lobby: ["chair", "boxes"],
+  habitable: ["crate", "barrel"],
+  pipedreams: ["valve", "pipecart"],
+  poolrooms: ["drain", "crack"],
+  hazard: ["sign", "scorchpile"],
+};
+
+/** Tuning for ambient decoration/collectible scatter — see MainScene's
+ *  hash-based placement pass. */
+export const DECORATION = {
+  /** Fraction of eligible floor tiles that get a prop (~1 in 90). */
+  propChance: 1 / 90,
+  /** Fraction of eligible floor tiles that get an Almond Water pickup. */
+  almondChance: 1 / 260,
+  /** Hard cap on Almond Water pickups per level, however large the map. */
+  almondMaxPerLevel: 6,
+  /** Extra reveal-radius tiles granted for a sip of Almond Water. */
+  almondVisionBoostTiles: 2.5,
+  /** How long the vision boost lasts (ms). */
+  almondVisionBoostMs: 9000,
+  /** World-unit pickup radius. */
+  almondPickupRadius: 14,
+} as const;
 
 /** Per-level-style palettes (see {@link LevelStyle}). */
 export const STYLE_COLORS: Record<LevelStyle, StyleColorSet> = {
@@ -197,6 +247,7 @@ export const STYLE_COLORS: Record<LevelStyle, StyleColorSet> = {
     floorPattern: "weave",
     accent: 0xb9aa66,
     accent2: 0x6f602f,
+    monsterMood: 0xfff0c0,
   },
   // Level 1 "The Habitable Zone" — a massive warehouse of bare concrete
   // floors and walls with exposed rebar and dim fluorescent light. Also the
@@ -221,6 +272,7 @@ export const STYLE_COLORS: Record<LevelStyle, StyleColorSet> = {
     floorPattern: "concrete",
     accent: 0x86888a,
     accent2: 0x505254,
+    monsterMood: 0xd8dde0,
   },
   // Level 2 "Pipe Dreams" — a dim, decrepit maintenance tunnel: grimy dark
   // concrete, mould speckle, and rusted pipes lining the walls.
@@ -244,6 +296,7 @@ export const STYLE_COLORS: Record<LevelStyle, StyleColorSet> = {
     floorPattern: "concrete",
     accent: 0xac5a2e,
     accent2: 0x6b3f22,
+    monsterMood: 0xe0a878,
   },
   // Level 3 "Poolrooms" — pristine, seamless white ceramic tile throughout,
   // with a faint blue-green tinge from the standing water.
@@ -267,6 +320,7 @@ export const STYLE_COLORS: Record<LevelStyle, StyleColorSet> = {
     floorPattern: "tile",
     accent: 0x6fd0c8,
     accent2: 0x2c8f8a,
+    monsterMood: 0xd0f0ec,
   },
   // Level 4 "Run For Your Life" — the final, most dangerous stretch: scorched
   // concrete and hazard tape rather than a documented wiki area.
@@ -290,6 +344,7 @@ export const STYLE_COLORS: Record<LevelStyle, StyleColorSet> = {
     floorPattern: "concrete",
     accent: 0xe0a838,
     accent2: 0x1a1410,
+    monsterMood: 0xffb078,
   },
 } as const;
 
@@ -327,6 +382,23 @@ export const COLORS = {
   exitGlow: 0x6bf09a,
   exitCore: 0x9dffc0,
   fog: 0x05050a,
+  // Exposed structural rebar, poking through a chipped concrete wall.
+  rebarRust: 0xa8552e,
+  // Generic set-dressing prop materials, independent of level style.
+  propWood: 0x7a5636,
+  propWoodDark: 0x4d3520,
+  propMetal: 0x8a8d90,
+  propMetalDark: 0x54575a,
+  propCardboard: 0xc2a06a,
+  propCardboardDark: 0x8c7148,
+  propSignBg: 0xe8c22a,
+  propSignDark: 0x1a1410,
+  // Almond Water pickup — the Backrooms survival staple.
+  almondGlass: 0x8fae62,
+  almondGlassHi: 0xbcd68f,
+  almondLiquid: 0xd8c98a,
+  almondLabel: 0xf4ecd2,
+  almondGlow: 0xeaffb0,
 } as const;
 
 /**
@@ -342,11 +414,15 @@ export const ZONE_TINT: Record<string, number> = {
 export const BLACKOUT_MIN_ALPHA = 0.62;
 
 export const TEXTURES = {
-  /** Baked per-style, per-neighbour-mask wall slab (see {@link WALL_MASK}). */
-  wall: (style: LevelStyle, mask: number) => `tex-wall-${style}-${mask}`,
+  /** Baked per-style, per-neighbour-mask, per-variant wall slab (see
+   *  {@link WALL_MASK}, {@link WALL_VARIANTS}). */
+  wall: (style: LevelStyle, mask: number, variant: number) =>
+    `tex-wall-${style}-${mask}-${variant}`,
   wallCrack: (style: LevelStyle) => `tex-wall-crack-${style}`,
-  floor: (style: LevelStyle) => `tex-floor-${style}`,
+  floor: (style: LevelStyle, variant: number) => `tex-floor-${style}-${variant}`,
   exit: (style: LevelStyle) => `tex-exit-${style}`,
+  prop: (kind: PropKind) => `tex-prop-${kind}`,
+  almondWater: "tex-almond-water",
   player: "tex-player",
   playerWalk: "tex-player-walk",
   playerBack: "tex-player-back",
