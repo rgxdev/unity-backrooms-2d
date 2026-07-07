@@ -7,6 +7,7 @@ import {
   DIFFICULTY_CONFIG,
   DREAD,
   EXIT_DREAD,
+  PURSUIT_CATCH,
   FEAR,
   FLOOR_VARIANTS,
   JUMPSCARE,
@@ -89,6 +90,9 @@ export class MainScene extends Phaser.Scene {
   private skinId: string = DEFAULT_SKIN_ID;
   private lethal = false;
   private pursuitSpeed = DIFFICULTY_CONFIG.easy.pursuitSpeed;
+  /** Gates {@link onPursuitCatch} so a non-lethal catch reacts once, then
+   *  gives the shove some time to open a gap before it can fire again. */
+  private pursuitCatchCooldownUntil = 0;
   /** True once the level has resolved (escaped or died); freezes gameplay. */
   private ended = false;
   private restarted = false;
@@ -227,6 +231,7 @@ export class MainScene extends Phaser.Scene {
     this.lastCueAt = -Infinity;
     this.ended = false;
     this.restarted = false;
+    this.pursuitCatchCooldownUntil = 0;
     this.lastTileX = -1;
     this.lastTileY = -1;
     this.discoveredZones.clear();
@@ -785,12 +790,23 @@ export class MainScene extends Phaser.Scene {
         this.despawnJumpscare();
         this.hideStalker();
         let nearest = Infinity;
+        let closest: Monster | null = null;
         for (const m of this.monsters) {
           m.pursue(playerPos, this.pursuitSpeed);
-          nearest = Math.min(nearest, m.distanceTo(playerPos));
+          const d = m.distanceTo(playerPos);
+          if (d < nearest) {
+            nearest = d;
+            closest = m;
+          }
         }
-        // On middle/hard the chase is lethal — it can catch and kill you.
-        if (this.lethal && nearest <= DREAD.killRadius) this.onDeath();
+        if (nearest <= DREAD.killRadius) {
+          // On middle/hard the chase is lethal — it can catch and kill you.
+          if (this.lethal) this.onDeath();
+          // Easy never kills, but the monster still needs to visibly react
+          // and back off — otherwise it just glues to the player forever
+          // (worst case, pinning them in a dead end with nothing to do).
+          else if (closest) this.onPursuitCatch(closest, playerPos);
+        }
         break;
       }
       case GamePhase.Escaped:
@@ -962,6 +978,29 @@ export class MainScene extends Phaser.Scene {
     this.pulseBarrel(0.9, 320);
 
     if (this.lethal) this.onDeath();
+  }
+
+  /** Non-lethal difficulties never kill on catch — but without a reaction
+   *  the pursuer would just sit glued on the player forever (a dead-end
+   *  corridor makes that a permanent stuck state). Scare beat, then shove
+   *  the monster back out past kill range so the chase re-opens. */
+  private onPursuitCatch(monster: Monster, playerPos: Vec2): void {
+    const now = this.time.now;
+    if (now < this.pursuitCatchCooldownUntil) return;
+    this.pursuitCatchCooldownUntil = now + PURSUIT_CATCH.cooldownMs;
+
+    this.audio.roar();
+    this.cameras.main.flash(300, 120, 0, 0);
+    this.cameras.main.shake(350, 0.01);
+    this.pulseBarrel(0.7, 260);
+
+    const dx = monster.x - playerPos.x;
+    const dy = monster.y - playerPos.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    monster.setPosition(
+      playerPos.x + (dx / dist) * PURSUIT_CATCH.knockbackDistance,
+      playerPos.y + (dy / dist) * PURSUIT_CATCH.knockbackDistance,
+    );
   }
 
   /** Fades the Stalker out, relocates it off-stage, and fades it back in —

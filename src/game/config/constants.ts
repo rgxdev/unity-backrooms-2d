@@ -33,6 +33,19 @@ export const DREAD = {
 } as const;
 
 /**
+ * On non-lethal difficulties a Pursuit-phase catch must never just leave the
+ * monster glued to the player (worst case, permanently pinning them in a dead
+ * end with nothing else able to happen). Instead it scares and shoves off.
+ */
+export const PURSUIT_CATCH = {
+  /** How far the monster is knocked back from the player on a non-lethal
+   *  catch — comfortably past killRadius so it doesn't re-trigger next frame. */
+  knockbackDistance: 140,
+  /** Minimum time between non-lethal catch reactions (ms). */
+  cooldownMs: 1500,
+} as const;
+
+/**
  * Per-difficulty level-generation and threat tuning. Higher difficulty =
  * larger, more complex levels, more monsters, and — crucially — a lethal
  * chase. Easy is never lethal. Sizes grow with the level index too, so later
