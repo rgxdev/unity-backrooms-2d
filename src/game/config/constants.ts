@@ -579,6 +579,7 @@ export const TEXTURES = {
   flashlight: "tex-flashlight-item",
   loreLetter: "tex-lore-letter",
   loreBook: "tex-lore-book",
+  lorePanel: "tex-lore-panel",
   monster: "tex-monster",
   monsterWalk: "tex-monster-walk",
   monsterBack: "tex-monster-back",

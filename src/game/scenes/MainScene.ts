@@ -200,7 +200,11 @@ export class MainScene extends Phaser.Scene {
   /** Set while a document is open on screen — gates movement-independent
    *  input so [F] closes the reader instead of re-triggering a pickup. */
   private loreReading: LoreEntry | null = null;
+  /** Zoom-compensated container parenting every reader element below — see
+   *  {@link buildLoreReader}. */
+  private loreUi!: Phaser.GameObjects.Container;
   private loreVeil!: Phaser.GameObjects.Rectangle;
+  private lorePanel!: Phaser.GameObjects.NineSlice;
   private loreTitleText!: Phaser.GameObjects.Text;
   private loreBodyText!: Phaser.GameObjects.Text;
   private lorePromptText!: Phaser.GameObjects.Text;
@@ -756,52 +760,77 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  /** Full-screen document reader — hidden until a pickup is opened. Built
-   *  once per level, alongside {@link showBanner}'s veil+text pattern, but
-   *  screen depth stays under the end-of-run banner (1001-1002). */
+  /**
+   * Full-screen document reader — a parchment panel over a dimming veil,
+   * hidden until a pickup is opened. Built once per level.
+   *
+   * The camera runs at a fixed zoom (see `create()`), and Phaser's camera
+   * transform scales *everything* it renders — including scrollFactor(0)
+   * HUD objects — around the camera's centre point; only camera *scroll* is
+   * cancelled by scrollFactor(0), not zoom. Left alone, this panel would
+   * render at `zoom`x the intended size and spill off-screen. Parenting
+   * every reader element to a container pre-scaled by `1/zoom` and
+   * positioned so the camera's zoom-about-centre transform maps it back to
+   * an identity transform lets every child below use plain, un-scaled
+   * screen-pixel coordinates.
+   */
   private buildLoreReader(): void {
     const cam = this.cameras.main;
+    const zoom = cam.zoom;
+    const cx = cam.width / 2;
+    const cy = cam.height / 2;
+
+    const ui = this.add.container(cx * (1 - 1 / zoom), cy * (1 - 1 / zoom));
+    ui.setScrollFactor(0).setDepth(800).setScale(1 / zoom).setVisible(false);
+
     this.loreVeil = this.add
       .rectangle(0, 0, cam.width, cam.height, 0x03030a, 0)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(800)
-      .setVisible(false);
+      .setOrigin(0, 0);
+    ui.add(this.loreVeil);
+
+    const panelWidth = Math.min(460, cam.width - 40);
+    const panelHeight = Math.min(300, cam.height - 60);
+    this.lorePanel = this.add
+      .nineslice(cx, cy, TEXTURES.lorePanel, undefined, panelWidth, panelHeight, 10, 10, 10, 10)
+      .setOrigin(0.5);
+    ui.add(this.lorePanel);
+
+    // Dark, ink-like text — the panel behind it is a pale parchment fill,
+    // not the dark veil the earlier flat-text version assumed.
     this.loreTitleText = this.add
-      .text(cam.width / 2, cam.height / 2 - 60, "", {
+      .text(cx, cy - panelHeight / 2 + 30, "", {
         fontFamily: "monospace",
         fontSize: "16px",
-        color: "#e4c94a",
+        fontStyle: "bold",
+        color: "#4a3d24",
         align: "center",
-        wordWrap: { width: cam.width - 100 },
+        wordWrap: { width: panelWidth - 80 },
       })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(801)
-      .setVisible(false);
+      .setOrigin(0.5);
+    ui.add(this.loreTitleText);
+
     this.loreBodyText = this.add
-      .text(cam.width / 2, cam.height / 2, "", {
+      .text(cx, cy + 8, "", {
         fontFamily: "monospace",
         fontSize: "13px",
-        color: "#d8cfa8",
+        color: "#5c4a2a",
         align: "center",
         lineSpacing: 6,
-        wordWrap: { width: cam.width - 120 },
+        wordWrap: { width: panelWidth - 90 },
       })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(801)
-      .setVisible(false);
+      .setOrigin(0.5);
+    ui.add(this.loreBodyText);
+
     this.lorePromptText = this.add
-      .text(cam.width / 2, cam.height - 36, "[F] Close", {
+      .text(cx, cy + panelHeight / 2 - 20, "[F] Close", {
         fontFamily: "monospace",
         fontSize: "11px",
-        color: "#8a8168",
+        color: "#8a7248",
       })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(801)
-      .setVisible(false);
+      .setOrigin(0.5);
+    ui.add(this.lorePromptText);
+
+    this.loreUi = ui;
   }
 
   /** Opens the full-screen reader for a found document and removes it from
@@ -817,18 +846,13 @@ export class MainScene extends Phaser.Scene {
     this.audio.chime();
     this.loreTitleText.setText(found.entry.title);
     this.loreBodyText.setText(found.entry.body);
-    this.loreVeil.setVisible(true).setAlpha(0.82);
-    this.loreTitleText.setVisible(true);
-    this.loreBodyText.setVisible(true);
-    this.lorePromptText.setVisible(true);
+    this.loreVeil.setAlpha(0.7);
+    this.loreUi.setVisible(true);
   }
 
   private closeLore(): void {
     this.loreReading = null;
-    this.loreVeil.setVisible(false);
-    this.loreTitleText.setVisible(false);
-    this.loreBodyText.setVisible(false);
-    this.lorePromptText.setVisible(false);
+    this.loreUi.setVisible(false);
   }
 
   /** Every-frame check for a nearby document, and the [F] key that either
