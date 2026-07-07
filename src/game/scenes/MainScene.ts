@@ -9,12 +9,16 @@ import {
 import { TileKind, type LevelData, type Zone } from "@/lib/schemas/level";
 import { getLevel, FIRST_LEVEL_ID } from "@/game/levels";
 import { Player } from "@/game/entities/Player";
+import { Monster } from "@/game/entities/Monster";
 import { PlayerController } from "@/game/systems/PlayerController";
 import { AudioManager } from "@/game/systems/AudioManager";
 import {
   TileVisibility,
   VisibilitySystem,
 } from "@/game/visibility/VisibilitySystem";
+import { buildPerception } from "@/game/ai/perception";
+import { DEFAULT_MONSTER_TUNING } from "@/game/ai/types";
+import type { Vec2 } from "@/game/ai/steering";
 import { getSettings } from "@/lib/settings-store";
 
 const FOG_ALPHA: Record<number, number> = {
@@ -30,6 +34,8 @@ export class MainScene extends Phaser.Scene {
   private audio!: AudioManager;
   private visibility!: VisibilitySystem;
   private walls!: Phaser.Physics.Arcade.StaticGroup;
+  private monsters: Monster[] = [];
+  private noiseEvents: Vec2[] = [];
 
   private fogTiles: Phaser.GameObjects.Rectangle[] = [];
   private fogState: Int8Array = new Int8Array(0);
@@ -69,6 +75,7 @@ export class MainScene extends Phaser.Scene {
       level.height,
       VISIBILITY.revealRadiusTiles,
     );
+    this.spawnMonsters();
     this.audio = new AudioManager(this.sound);
 
     if (getSettings().showFps) {
@@ -154,9 +161,76 @@ export class MainScene extends Phaser.Scene {
       spawn.y * TILE_SIZE + TILE_SIZE / 2,
     );
     this.player.setDepth(100);
-    this.controller = new PlayerController(this, this.player);
+    this.controller = new PlayerController(this, this.player, (x, y) =>
+      this.noiseEvents.push({ x, y }),
+    );
     this.physics.add.collider(this.player, this.walls);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
+  }
+
+  private centreOf(tileX: number, tileY: number): Vec2 {
+    return {
+      x: tileX * TILE_SIZE + TILE_SIZE / 2,
+      y: tileY * TILE_SIZE + TILE_SIZE / 2,
+    };
+  }
+
+  private spawnMonsters(): void {
+    this.monsters = this.level.monsters.map((spawn) => {
+      const origin = this.centreOf(spawn.x, spawn.y);
+      const waypoints = spawn.patrol.map((p) => this.centreOf(p.x, p.y));
+      const monster = new Monster(
+        this,
+        origin.x,
+        origin.y,
+        waypoints,
+        DEFAULT_MONSTER_TUNING,
+      );
+      monster.setDepth(90);
+      this.physics.add.collider(monster, this.walls);
+      monster.onCatch = () => this.onPlayerCaught();
+      return monster;
+    });
+  }
+
+  /** Player was reached by a monster: reset both back to their spawns. */
+  private onPlayerCaught(): void {
+    const { spawn } = this.level;
+    const home = this.centreOf(spawn.x, spawn.y);
+    this.player.setPosition(home.x, home.y);
+    this.player.setVelocity(0, 0);
+    this.cameras.main.flash(280, 120, 0, 0);
+    this.monsters.forEach((m) => m.resetToPatrol());
+  }
+
+  private updateMonsters(deltaSeconds: number): void {
+    if (this.monsters.length === 0) return;
+    const playerPos: Vec2 = { x: this.player.x, y: this.player.y };
+    const playerTileX = Math.floor(this.player.x / TILE_SIZE);
+    const playerTileY = Math.floor(this.player.y / TILE_SIZE);
+    const { sightRange, hearingRange } = DEFAULT_MONSTER_TUNING;
+
+    for (const monster of this.monsters) {
+      const monsterTileX = Math.floor(monster.x / TILE_SIZE);
+      const monsterTileY = Math.floor(monster.y / TILE_SIZE);
+      const perception = buildPerception({
+        monster: { x: monster.x, y: monster.y },
+        player: playerPos,
+        sightRange,
+        hearingRange,
+        noises: this.noiseEvents,
+        hasLineOfSight: () =>
+          this.visibility.hasLineOfSight(
+            monsterTileX,
+            monsterTileY,
+            playerTileX,
+            playerTileY,
+            (x, y) => this.isWallTile(x, y),
+          ),
+      });
+      monster.think(deltaSeconds, perception, playerPos);
+    }
+    this.noiseEvents.length = 0;
   }
 
   private markZoneDiscovery(tileX: number, tileY: number): void {
@@ -184,7 +258,7 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  override update(): void {
+  override update(_time: number, delta: number): void {
     this.controller.update();
 
     const tileX = Math.floor(this.player.x / TILE_SIZE);
@@ -196,6 +270,8 @@ export class MainScene extends Phaser.Scene {
       this.visibility.update(tileX, tileY, (x, y) => this.isWallTile(x, y));
       this.refreshFog();
     }
+
+    this.updateMonsters(delta / 1000);
 
     if (this.fpsText) {
       this.fpsText.setText(`FPS ${Math.round(this.game.loop.actualFps)}`);

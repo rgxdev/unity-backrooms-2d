@@ -14,6 +14,19 @@ export const ZoneSchema = z.object({
   hidden: z.boolean().default(false),
 });
 
+export const PointSchema = z.object({
+  x: z.number().int().nonnegative(),
+  y: z.number().int().nonnegative(),
+});
+
+export const MonsterSpawnSchema = z.object({
+  id: z.string().min(1).max(64),
+  x: z.number().int().nonnegative(),
+  y: z.number().int().nonnegative(),
+  /** Looping patrol waypoints in tile coordinates. Empty = stationary. */
+  patrol: z.array(PointSchema).default([]),
+});
+
 export const LevelSchema = z
   .object({
     id: z.string().min(1).max(64),
@@ -27,6 +40,7 @@ export const LevelSchema = z
       y: z.number().int().nonnegative(),
     }),
     zones: z.array(ZoneSchema).default([]),
+    monsters: z.array(MonsterSpawnSchema).default([]),
   })
   .superRefine((level, ctx) => {
     if (level.tiles.length !== level.width * level.height) {
@@ -45,9 +59,30 @@ export const LevelSchema = z
         path: ["spawn"],
       });
     }
+    const inBounds = (x: number, y: number) =>
+      x < level.width && y < level.height;
+    level.monsters.forEach((monster, i) => {
+      if (!inBounds(monster.x, monster.y)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `monster "${monster.id}" spawn is outside level bounds`,
+          path: ["monsters", i],
+        });
+      }
+      monster.patrol.forEach((point, j) => {
+        if (!inBounds(point.x, point.y)) {
+          ctx.addIssue({
+            code: "custom",
+            message: `monster "${monster.id}" patrol point is outside level bounds`,
+            path: ["monsters", i, "patrol", j],
+          });
+        }
+      });
+    });
   });
 
 export type Zone = z.infer<typeof ZoneSchema>;
+export type MonsterSpawn = z.infer<typeof MonsterSpawnSchema>;
 export type LevelData = z.infer<typeof LevelSchema>;
 
 export function parseLevel(input: unknown): LevelData {

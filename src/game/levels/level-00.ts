@@ -51,6 +51,30 @@ function build(): LevelData {
       { id: "east-hall", x: 30, y: 2, w: 11, h: 9, hidden: false },
       { id: "hidden-vault", x: 33, y: 18, w: 8, h: 11, hidden: true },
     ].map(({ w, h, ...rest }) => ({ ...rest, width: w, height: h })),
+    monsters: [
+      {
+        id: "hound-central",
+        x: 23,
+        y: 19,
+        patrol: [
+          { x: 19, y: 17 },
+          { x: 28, y: 17 },
+          { x: 28, y: 22 },
+          { x: 19, y: 22 },
+        ],
+      },
+      {
+        id: "stalker-east",
+        x: 35,
+        y: 5,
+        patrol: [
+          { x: 32, y: 3 },
+          { x: 39, y: 3 },
+          { x: 39, y: 9 },
+          { x: 32, y: 9 },
+        ],
+      },
+    ],
   });
 }
 

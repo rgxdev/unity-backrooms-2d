@@ -56,12 +56,33 @@ Detection sources, in priority order:
 
 ## Integration Steps (Week 4)
 
-1. Add a `Monster` entity (arcade body, animation).
-2. Provide a perception provider that fills `Perception` from the scene
-   (LOS to player, distance, queued noise events).
-3. Call `stateMachine.update(deltaSeconds, perception)` each frame and drive
-   movement from the returned state.
-4. Object-pool monsters and their effects once multiple spawns are needed.
+1. ✅ `Monster` entity ([`src/game/entities/Monster.ts`](../src/game/entities/Monster.ts)) —
+   arcade body, wall collision, owns the FSM and drives movement per state.
+2. ✅ Perception provider ([`src/game/ai/perception.ts`](../src/game/ai/perception.ts)) —
+   builds `Perception` from LOS (visibility Bresenham), distance, and queued
+   noise events. Pure and unit tested.
+3. ✅ `MainScene` calls `monster.think(deltaSeconds, perception, playerPos)` each
+   frame; movement uses pure steering helpers
+   ([`src/game/ai/steering.ts`](../src/game/ai/steering.ts)).
+4. Object-pool monsters and their effects once many spawns are needed (future).
+
+### Movement per state (scene-side)
+
+- **Patrol** — walk the looping waypoint path from `level.monsters[].patrol`
+  (stationary if empty).
+- **Chase** — steer straight at the player; the current position is stored as
+  last-known each frame.
+- **Search** — go to the last-known position, then hold/sweep until the FSM
+  `searchTimeout` downgrades to Patrol.
+- **Attack** — stop and fire `onCatch` once (scene resets player + monsters).
+- **Lost** — hold; the FSM downgrades to Search after `lostTimeout`.
+
+### Detection inputs
+
+- **Sight** — within `sightRange` **and** unobstructed LOS to the player tile.
+- **Noise** — the player emits a noise event while **sprinting** (hold Shift);
+  a monster within `hearingRange` registers it and investigates (Patrol →
+  Search toward the player's position).
 
 ## Testing
 

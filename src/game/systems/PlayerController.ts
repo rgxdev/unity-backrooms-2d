@@ -11,7 +11,11 @@ type Keys = {
   a: Phaser.Input.Keyboard.Key;
   s: Phaser.Input.Keyboard.Key;
   d: Phaser.Input.Keyboard.Key;
+  shift: Phaser.Input.Keyboard.Key;
 };
+
+/** Emitted when the player makes noise a monster can hear (sprinting). */
+export type NoiseEmitter = (x: number, y: number) => void;
 
 /**
  * Reads input and drives the arcade body. Velocity is set on a persistent
@@ -24,6 +28,7 @@ export class PlayerController {
   constructor(
     scene: Phaser.Scene,
     private readonly player: Player,
+    private readonly onNoise?: NoiseEmitter,
   ) {
     const keyboard = scene.input.keyboard;
     if (!keyboard) {
@@ -40,6 +45,7 @@ export class PlayerController {
         a: K.A,
         s: K.S,
         d: K.D,
+        shift: K.SHIFT,
       },
       false,
     ) as Keys;
@@ -57,9 +63,16 @@ export class PlayerController {
       (down ? 1 : 0) - (up ? 1 : 0),
     );
 
-    if (this.velocity.lengthSq() > 0) {
-      this.velocity.normalize().scale(PLAYER.speed);
+    const moving = this.velocity.lengthSq() > 0;
+    const sprinting = moving && k.shift.isDown;
+    if (moving) {
+      this.velocity
+        .normalize()
+        .scale(sprinting ? PLAYER.sprintSpeed : PLAYER.speed);
     }
     this.player.setVelocity(this.velocity.x, this.velocity.y);
+
+    // Sprinting is loud — nearby monsters can hear it and start searching.
+    if (sprinting) this.onNoise?.(this.player.x, this.player.y);
   }
 }

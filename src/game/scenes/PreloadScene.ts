@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import {
   COLORS,
+  MONSTER,
   PLAYER,
   SCENES,
   TEXTURES,
@@ -35,6 +36,7 @@ export class PreloadScene extends Phaser.Scene {
     this.makeCarpet(TEXTURES.floorAlt, 1);
     this.makeWall(TEXTURES.wall);
     this.makePlayer(TEXTURES.player);
+    this.makeMonster(TEXTURES.monster);
   }
 
   /** Fill a single "pixel" cell. Keeps sprite work readable. */
@@ -139,6 +141,44 @@ export class PreloadScene extends Phaser.Scene {
     // Legs.
     this.px(g, COLORS.playerPants, 3, 11, s - 6, 3);
     this.px(g, COLORS.playerOutline, s / 2 - 0.5, 11, 1, 3);
+
+    g.generateTexture(key, s, s);
+    g.destroy();
+  }
+
+  /**
+   * Lurking monster sprite: a hunched dark body with glowing eyes and a pale
+   * maw — reads as a threat at a glance and stays legible under the fog.
+   */
+  private makeMonster(key: string): void {
+    const s = MONSTER.size; // 16
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+
+    // Dark keyline silhouette.
+    this.px(g, COLORS.playerOutline, 2, 1, s - 4, s - 1);
+    this.px(g, COLORS.playerOutline, 1, 3, s - 2, s - 4);
+
+    // Hunched body, shaded on the right.
+    this.px(g, COLORS.monsterBody, 3, 2, s - 6, s - 3);
+    this.px(g, COLORS.monsterBodyShade, s - 5, 2, 2, s - 3);
+    // Shoulders / brow ridge.
+    this.px(g, COLORS.monsterBody, 2, 4, s - 4, 3);
+
+    // Spindly limbs poking out the sides.
+    this.px(g, COLORS.monsterLimb, 1, 7, 2, 4);
+    this.px(g, COLORS.monsterLimb, s - 3, 7, 2, 4);
+
+    // Glowing eyes.
+    this.px(g, COLORS.monsterEye, 4, 5, 2, 2);
+    this.px(g, COLORS.monsterEye, s - 6, 5, 2, 2);
+    this.px(g, 0xffffff, 4, 5, 1, 1, 0.8);
+    this.px(g, 0xffffff, s - 6, 5, 1, 1, 0.8);
+
+    // Jagged pale maw.
+    this.px(g, COLORS.monsterMaw, 5, 10, s - 10, 2);
+    this.px(g, COLORS.monsterBodyShade, 6, 10, 1, 2);
+    this.px(g, COLORS.monsterBodyShade, 8, 10, 1, 2);
+    this.px(g, COLORS.monsterBodyShade, 10, 10, 1, 2);
 
     g.generateTexture(key, s, s);
     g.destroy();

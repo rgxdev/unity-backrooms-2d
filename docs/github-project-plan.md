@@ -111,12 +111,12 @@ are checked in; the rest are Backlog/Ready.
 | 15  | Fog of War                    | Week 3    | type:feature, area:visibility, priority:high     | Done    |
 | 16  | Line-of-Sight Corridor Reveal | Week 3    | type:feature, area:visibility, priority:high     | Done    |
 | 17  | Hidden Corridor Discovery     | Week 3    | type:feature, area:visibility, priority:medium   | Done    |
-| 18  | Monster Entity Foundation     | Week 4    | type:feature, area:ai, priority:high             | Ready   |
+| 18  | Monster Entity Foundation     | Week 4    | type:feature, area:ai, priority:high             | Done    |
 | 19  | Monster AI State Machine      | Week 4    | type:feature, area:ai, priority:high             | Done    |
-| 20  | Monster Patrol Behavior       | Week 4    | type:feature, area:ai, priority:medium           | Backlog |
-| 21  | Monster Chase Behavior        | Week 4    | type:feature, area:ai, priority:medium           | Backlog |
-| 22  | Monster Search Behavior       | Week 4    | type:feature, area:ai, priority:medium           | Backlog |
-| 23  | Player Detection System       | Week 4    | type:feature, area:ai, priority:high             | Backlog |
+| 20  | Monster Patrol Behavior       | Week 4    | type:feature, area:ai, priority:medium           | Done    |
+| 21  | Monster Chase Behavior        | Week 4    | type:feature, area:ai, priority:medium           | Done    |
+| 22  | Monster Search Behavior       | Week 4    | type:feature, area:ai, priority:medium           | Done    |
+| 23  | Player Detection System       | Week 4    | type:feature, area:ai, priority:high             | Done    |
 | 24  | Level Transition System       | Week 5    | type:feature, area:level, priority:medium        | Backlog |
 | 25  | Audio Manager                 | Week 5    | type:feature, area:audio, priority:medium        | Ready   |
 | 26  | Save and Settings Persistence | Week 5    | type:feature, area:app, priority:high            | Ready   |
