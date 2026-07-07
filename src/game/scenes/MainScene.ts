@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import {
+  AMBIENT_DARKEN,
   ANOMALY,
   BLACKOUT_EVENT,
   BLACKOUT_MIN_ALPHA,
@@ -11,6 +12,8 @@ import {
   FLASHLIGHT,
   FLOOR_VARIANTS,
   JUMPSCARE,
+  LORE_PICKUP,
+  MONSTER_STEALTH,
   MONSTER_TINT,
   OLDSCHOOL_FX,
   PATHFIND,
@@ -26,6 +29,7 @@ import {
   WALL_VARIANTS,
   ZONE_TINT,
 } from "@/game/config/constants";
+import { getLoreForLevel, type LoreEntry } from "@/game/content/lore";
 import type { Difficulty } from "@/lib/schemas/settings";
 import { TileKind, type LevelData, type Zone } from "@/lib/schemas/level";
 import {
@@ -52,6 +56,7 @@ import type { Vec2 } from "@/game/ai/steering";
 import { findPath } from "@/game/ai/pathfinding";
 import { getSettings } from "@/lib/settings-store";
 import { completeLevel, getProgress } from "@/lib/progress-store";
+import { addItem, hasItem } from "@/lib/inventory-store";
 import {
   DEFAULT_SKIN_ID,
   resolveEquippedSkinId,
@@ -153,6 +158,8 @@ export class MainScene extends Phaser.Scene {
   private scanlineOverlay: Phaser.GameObjects.TileSprite | null = null;
   private grainOverlay: Phaser.GameObjects.TileSprite | null = null;
   private nextGrainJitterAt = 0;
+  /** Permanent flat screen-wide dim — see {@link AMBIENT_DARKEN}. */
+  private ambientDarkenOverlay: Phaser.GameObjects.Rectangle | null = null;
 
   /** Scattered Almond Water pickups still on the floor. */
   private almondBottles: Phaser.GameObjects.Image[] = [];
@@ -161,10 +168,11 @@ export class MainScene extends Phaser.Scene {
 
   /**
    * The Flashlight (see FLASHLIGHT constants): a single rare pickup, only
-   * ever spawned in the first level, kept for the rest of the game session
-   * once found (persisted on the scene registry so it survives a
-   * scene.restart()). Equip/use it from hotbar slot 1; aims a beam at the
-   * cursor that widens the fog-of-war reveal in that direction.
+   * ever spawned in the first level, kept forever once found (persisted in
+   * the inventory store, see @/lib/inventory-store, so it survives
+   * scene.restart() and page reloads alike). Equip/use it from hotbar slot 1;
+   * aims a beam at the cursor that widens the fog-of-war reveal in that
+   * direction.
    */
   private hasFlashlight = false;
   private flashlightOn = false;
@@ -178,6 +186,24 @@ export class MainScene extends Phaser.Scene {
   private hotbarBg!: Phaser.GameObjects.Rectangle;
   private hotbarIcon!: Phaser.GameObjects.Image;
   private hotbarLabel!: Phaser.GameObjects.Text;
+
+  /**
+   * Found documents (letters/book pages) scattered per level — see
+   * game/content/lore.ts for the text and LORE_PICKUP (constants.ts) for
+   * placement tuning. Reuses the Flashlight's [F] interact key.
+   */
+  private lorePickups: Array<{
+    image: Phaser.GameObjects.Image;
+    prompt: Phaser.GameObjects.Text;
+    entry: LoreEntry;
+  }> = [];
+  /** Set while a document is open on screen — gates movement-independent
+   *  input so [F] closes the reader instead of re-triggering a pickup. */
+  private loreReading: LoreEntry | null = null;
+  private loreVeil!: Phaser.GameObjects.Rectangle;
+  private loreTitleText!: Phaser.GameObjects.Text;
+  private loreBodyText!: Phaser.GameObjects.Text;
+  private lorePromptText!: Phaser.GameObjects.Text;
 
   constructor() {
     super(SCENES.main);
@@ -201,10 +227,9 @@ export class MainScene extends Phaser.Scene {
     this.lethal = cfg.lethal;
     this.pursuitSpeed = cfg.pursuitSpeed;
 
-    // Once found, the Flashlight stays equipped for the rest of the game
-    // session — the registry lives on the Game, not the Scene, so it
-    // survives scene.restart() across levels (and death/fall retries).
-    this.hasFlashlight = this.registry.get("hasFlashlight") === true;
+    // Once found, the Flashlight stays in the persisted inventory (localStorage)
+    // — it survives scene.restart(), death/fall retries, and page reloads.
+    this.hasFlashlight = hasItem("flashlight");
     this.flashlightOn =
       this.hasFlashlight && this.registry.get("flashlightOn") === true;
 
@@ -239,6 +264,8 @@ export class MainScene extends Phaser.Scene {
     this.buildTiles();
     this.buildDecorations();
     this.buildFlashlightPickup();
+    this.buildLorePickups();
+    this.buildLoreReader();
     this.buildHiddenZoneMask();
     this.buildFog();
     this.spawnPlayer();
@@ -302,6 +329,7 @@ export class MainScene extends Phaser.Scene {
     this.scanlineOverlay = null;
     this.grainOverlay = null;
     this.nextGrainJitterAt = 0;
+    this.ambientDarkenOverlay = null;
     this.runStartedAt = 0;
     this.almondBottles = [];
     this.visionBoosted = false;
@@ -309,6 +337,8 @@ export class MainScene extends Phaser.Scene {
     this.flashlightPickup = null;
     this.flashlightPrompt = null;
     this.flashlightNextRecalcAt = 0;
+    this.lorePickups = [];
+    this.loreReading = null;
   }
 
   private isWallTile(x: number, y: number): boolean {
@@ -471,6 +501,7 @@ export class MainScene extends Phaser.Scene {
     const bottle = this.almondBottles[index];
     if (!bottle) return;
     this.almondBottles.splice(index, 1);
+    addItem("almondWater", 1);
     this.tweens.add({
       targets: bottle,
       alpha: 0,
@@ -515,7 +546,7 @@ export class MainScene extends Phaser.Scene {
   /**
    * Places the single Flashlight pickup at a random walkable floor tile,
    * tucked away from the spawn — but only in the first level, and only if
-   * it hasn't already been found this game session (see {@link hasFlashlight}).
+   * it hasn't already been found in a prior session (see {@link hasFlashlight}).
    */
   private buildFlashlightPickup(): void {
     if (this.levelIndex !== 0 || this.hasFlashlight) return;
@@ -630,10 +661,11 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  /** Picks up the Flashlight — permanent for the rest of the session. */
+  /** Picks up the Flashlight — persisted to the inventory store, permanent
+   *  across sessions. */
   private collectFlashlight(): void {
     this.hasFlashlight = true;
-    this.registry.set("hasFlashlight", true);
+    addItem("flashlight", 1);
     this.flashlightPickup?.destroy();
     this.flashlightPickup = null;
     this.flashlightPrompt?.destroy();
@@ -660,6 +692,172 @@ export class MainScene extends Phaser.Scene {
     this.flashlightPrompt?.setVisible(inRange);
     if (inRange && Phaser.Input.Keyboard.JustDown(this.interactKey)) {
       this.collectFlashlight();
+    }
+  }
+
+  /**
+   * Scatters a handful of unique found documents (letters/book pages) across
+   * random floor tiles, each carrying one entry from this level's authored
+   * lore pool (see game/content/lore.ts) — no two documents on the same
+   * level repeat text. Candidate-list + explicit pick, same shape as
+   * {@link buildFlashlightPickup}, since (unlike the hash-scattered props)
+   * each spawn needs its own distinct content rather than a uniform roll.
+   */
+  private buildLorePickups(): void {
+    const { width, height, tiles, spawn, exit } = this.level;
+    const candidates: Vec2[] = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (tiles[y * width + x] !== TileKind.Floor) continue;
+        if (x === spawn.x && y === spawn.y) continue;
+        if (exit && x === exit.x && y === exit.y) continue;
+        const dx = x - spawn.x;
+        const dy = y - spawn.y;
+        if (dx * dx + dy * dy < LORE_PICKUP.minSpawnDistSqTiles) continue;
+        candidates.push({ x, y });
+      }
+    }
+    if (candidates.length === 0) return;
+
+    const pool = getLoreForLevel(this.levelIndex);
+    const shuffledEntries = Phaser.Utils.Array.Shuffle(pool.slice());
+    const count = Math.min(
+      candidates.length,
+      shuffledEntries.length,
+      Phaser.Math.Between(LORE_PICKUP.minPerLevel, LORE_PICKUP.maxPerLevel),
+    );
+
+    const shuffledTiles = Phaser.Utils.Array.Shuffle(candidates);
+    for (let i = 0; i < count; i++) {
+      const tile = shuffledTiles[i]!;
+      const entry = shuffledEntries[i]!;
+      const c = this.centreOf(tile.x, tile.y);
+      const key =
+        entry.kind === "book" ? TEXTURES.loreBook : TEXTURES.loreLetter;
+      const image = this.add.image(c.x, c.y, key).setDepth(-6);
+      this.tweens.add({
+        targets: image,
+        y: c.y - 3,
+        duration: 950 + Math.round(hash01(tile.x, tile.y, 83) * 300),
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.InOut",
+      });
+      const prompt = this.add
+        .text(c.x, c.y - 20, "[F] Read", {
+          fontFamily: "monospace",
+          fontSize: "11px",
+          color: "#e4c94a",
+        })
+        .setOrigin(0.5)
+        .setDepth(120)
+        .setVisible(false);
+      this.lorePickups.push({ image, prompt, entry });
+    }
+  }
+
+  /** Full-screen document reader — hidden until a pickup is opened. Built
+   *  once per level, alongside {@link showBanner}'s veil+text pattern, but
+   *  screen depth stays under the end-of-run banner (1001-1002). */
+  private buildLoreReader(): void {
+    const cam = this.cameras.main;
+    this.loreVeil = this.add
+      .rectangle(0, 0, cam.width, cam.height, 0x03030a, 0)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(800)
+      .setVisible(false);
+    this.loreTitleText = this.add
+      .text(cam.width / 2, cam.height / 2 - 60, "", {
+        fontFamily: "monospace",
+        fontSize: "16px",
+        color: "#e4c94a",
+        align: "center",
+        wordWrap: { width: cam.width - 100 },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(801)
+      .setVisible(false);
+    this.loreBodyText = this.add
+      .text(cam.width / 2, cam.height / 2, "", {
+        fontFamily: "monospace",
+        fontSize: "13px",
+        color: "#d8cfa8",
+        align: "center",
+        lineSpacing: 6,
+        wordWrap: { width: cam.width - 120 },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(801)
+      .setVisible(false);
+    this.lorePromptText = this.add
+      .text(cam.width / 2, cam.height - 36, "[F] Close", {
+        fontFamily: "monospace",
+        fontSize: "11px",
+        color: "#8a8168",
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(801)
+      .setVisible(false);
+  }
+
+  /** Opens the full-screen reader for a found document and removes it from
+   *  the world — read once, gone, same as the Flashlight pickup. */
+  private openLore(index: number): void {
+    const found = this.lorePickups[index];
+    if (!found) return;
+    this.lorePickups.splice(index, 1);
+    found.image.destroy();
+    found.prompt.destroy();
+
+    this.loreReading = found.entry;
+    this.audio.chime();
+    this.loreTitleText.setText(found.entry.title);
+    this.loreBodyText.setText(found.entry.body);
+    this.loreVeil.setVisible(true).setAlpha(0.82);
+    this.loreTitleText.setVisible(true);
+    this.loreBodyText.setVisible(true);
+    this.lorePromptText.setVisible(true);
+  }
+
+  private closeLore(): void {
+    this.loreReading = null;
+    this.loreVeil.setVisible(false);
+    this.loreTitleText.setVisible(false);
+    this.loreBodyText.setVisible(false);
+    this.lorePromptText.setVisible(false);
+  }
+
+  /** Every-frame check for a nearby document, and the [F] key that either
+   *  opens the nearest in-range pickup or closes an open reader — mirrors
+   *  {@link updateFlashlightPickup}'s proximity + JustDown shape. */
+  private updateLorePickups(): void {
+    if (this.loreReading) {
+      if (Phaser.Input.Keyboard.JustDown(this.interactKey)) this.closeLore();
+      return;
+    }
+
+    let nearestIndex = -1;
+    let nearestDistSq = Infinity;
+    for (let i = 0; i < this.lorePickups.length; i++) {
+      const found = this.lorePickups[i]!;
+      const dx = found.image.x - this.player.x;
+      const dy = found.image.y - this.player.y;
+      const distSq = dx * dx + dy * dy;
+      found.prompt.setVisible(distSq <= LORE_PICKUP.pickupRadius ** 2);
+      if (distSq <= LORE_PICKUP.pickupRadius ** 2 && distSq < nearestDistSq) {
+        nearestDistSq = distSq;
+        nearestIndex = i;
+      }
+    }
+    if (
+      nearestIndex >= 0 &&
+      Phaser.Input.Keyboard.JustDown(this.interactKey)
+    ) {
+      this.openLore(nearestIndex);
     }
   }
 
@@ -975,6 +1173,9 @@ export class MainScene extends Phaser.Scene {
     if (this.anomalyOverlay?.active) {
       this.anomalyOverlay.setSize(cam.width, cam.height);
     }
+    if (this.ambientDarkenOverlay?.active) {
+      this.ambientDarkenOverlay.setSize(cam.width, cam.height);
+    }
     if (this.scanlineOverlay?.active) {
       this.scanlineOverlay.setSize(cam.width, cam.height);
     }
@@ -1013,6 +1214,11 @@ export class MainScene extends Phaser.Scene {
    *  overlays / blackout veil / HUD so it never fights their readability. */
   private buildOldschoolOverlay(): void {
     const cam = this.cameras.main;
+    this.ambientDarkenOverlay = this.add
+      .rectangle(0, 0, cam.width, cam.height, 0x000000, AMBIENT_DARKEN.alpha)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(840);
     this.scanlineOverlay = this.add
       .tileSprite(0, 0, cam.width, cam.height, TEXTURES.scanlines)
       .setOrigin(0, 0)
@@ -1131,6 +1337,7 @@ export class MainScene extends Phaser.Scene {
         const proximity = this.exitProximity(tile.x, tile.y);
         const speedBoost = 1 + proximity * EXIT_DREAD.maxSpeedBoost;
         for (const m of this.monsters) m.tickAmbient(speedBoost);
+        this.updateMonsterFogVisibility(playerPos);
         this.presenceCue(time, playerPos, proximity);
         this.updateJumpscare(time, playerPos, proximity);
         this.updateStalker(deltaMs, playerPos);
@@ -1181,7 +1388,13 @@ export class MainScene extends Phaser.Scene {
 
   private onPhaseChange(phase: GamePhase): void {
     if (phase === GamePhase.Pursuit) {
-      // The end is near — the monster wakes with a roar and a jolt.
+      // The end is near — the monster wakes with a roar and a jolt. The
+      // ambient stealth dimming/hiding is over — every pursuer is in the
+      // open now, no more fog-of-war glimpses.
+      for (const m of this.monsters) {
+        m.setVisible(true);
+        m.setAlpha(1);
+      }
       this.audio.roar();
       this.cameras.main.flash(320, 90, 0, 0);
       this.cameras.main.shake(400, 0.006);
@@ -1785,6 +1998,46 @@ export class MainScene extends Phaser.Scene {
     return Phaser.Math.Clamp(t, 0, 1);
   }
 
+  /**
+   * Ambient patrol monsters (see {@link MONSTER_STEALTH}) should read as
+   * glimpses in the dark, not a crowd standing in the open — on every level,
+   * not just the ones with hand-spaced spawns. A monster is only ever drawn
+   * while its own tile is currently within line-of-sight (mirroring the
+   * fog's Visible state, faded the same way toward the rim so it's hard to
+   * make out in the shadows), and even then only the single nearest one to
+   * the player is shown — any others sharing the sightline stay hidden
+   * until they become the nearest.
+   */
+  private updateMonsterFogVisibility(playerPos: Vec2): void {
+    let nearest: Monster | null = null;
+    let nearestDist = Infinity;
+    let nearestAlpha = 0;
+    for (const m of this.monsters) {
+      const tx = Math.floor(m.x / TILE_SIZE);
+      const ty = Math.floor(m.y / TILE_SIZE);
+      if (this.visibility.getState(tx, ty) !== TileVisibility.Visible) {
+        m.setVisible(false);
+        continue;
+      }
+      const d = m.distanceTo(playerPos);
+      if (d >= nearestDist) {
+        m.setVisible(false);
+        continue;
+      }
+      if (nearest) nearest.setVisible(false);
+      nearest = m;
+      nearestDist = d;
+      const falloff = this.edgeFalloff(tx, ty);
+      nearestAlpha =
+        MONSTER_STEALTH.minAlpha +
+        (MONSTER_STEALTH.maxAlpha - MONSTER_STEALTH.minAlpha) * (1 - falloff);
+    }
+    if (nearest) {
+      nearest.setVisible(true);
+      nearest.setAlpha(nearestAlpha);
+    }
+  }
+
   private refreshFog(): void {
     const width = this.level.width;
     for (let i = 0; i < this.fogState.length; i++) {
@@ -1824,7 +2077,11 @@ export class MainScene extends Phaser.Scene {
   }
 
   override update(time: number, delta: number): void {
-    this.controller.update(delta);
+    // Reading a document holds the player in place — the reader overlay
+    // covers most of the screen, so blind movement underneath it would be
+    // an unfair way to wander into a hole or a monster.
+    if (this.loreReading) this.player.setVelocity(0, 0);
+    else this.controller.update(delta);
 
     const tileX = Math.floor(this.player.x / TILE_SIZE);
     const tileY = Math.floor(this.player.y / TILE_SIZE);
@@ -1841,6 +2098,7 @@ export class MainScene extends Phaser.Scene {
 
     if (!this.ended) this.updateAlmondWater(time);
     if (!this.ended) this.updateFlashlightPickup();
+    if (!this.ended) this.updateLorePickups();
     if (!this.ended) this.updateFlashlightToggle();
     if (!this.ended) this.updateFlashlightBeam(time);
 

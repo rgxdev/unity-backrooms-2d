@@ -1,7 +1,7 @@
 import { parseLevel, TileKind, type LevelData, type Zone } from "@/lib/schemas/level";
 import type { Difficulty } from "@/lib/schemas/settings";
 import { DIFFICULTY_CONFIG, MAX_MONSTERS } from "@/game/config/constants";
-import { chance, makeRng, pick, randInt, type Rng } from "./rng";
+import { chance, makeRng, pick, randInt, shuffle, type Rng } from "./rng";
 import { pickWallExit } from "./wallExit";
 
 interface Room {
@@ -327,12 +327,21 @@ export function generateLevel(input: GenerateInput): LevelData {
 
   // Monsters: one pursuer waits in the exit room; the rest lurk elsewhere.
   // The secret room (if any) stays monster-free — it's meant as a safe pocket.
+  // Round-robin a shuffled room order (instead of an independent random pick
+  // per monster) so lurkers spread across distinct rooms first and only ever
+  // repeat a room once every other one already has a threat — otherwise
+  // several can land in the same room and clump into a crowd that's visible
+  // together nonstop instead of one threat at a time.
   const monsters = [makeMonster("pursuer", exitRoom, rng)];
-  const otherRooms = rooms.filter(
-    (r) => r !== spawnRoom && r !== exitRoom && r !== secret?.room,
+  const otherRooms = shuffle(
+    rng,
+    rooms.filter((r) => r !== spawnRoom && r !== exitRoom && r !== secret?.room),
   );
   for (let i = 1; i < monsterCount; i++) {
-    const room = otherRooms.length > 0 ? pick(rng, otherRooms) : exitRoom;
+    const room =
+      otherRooms.length > 0
+        ? otherRooms[(i - 1) % otherRooms.length]!
+        : exitRoom;
     monsters.push(makeMonster(`lurker-${i}`, room, rng));
   }
   // Keep every monster spawn and patrol tile walkable (a pillar may have

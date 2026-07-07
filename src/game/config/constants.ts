@@ -201,6 +201,13 @@ export const BLACKOUT_EVENT = {
   durationMs: 320,
 } as const;
 
+/** Permanent flat dim over the whole screen, independent of fog/vignette —
+ *  so even fully "Visible" tiles read as dim sickly fluorescent light
+ *  instead of a fully-lit set. Applied everywhere, all the time. */
+export const AMBIENT_DARKEN = {
+  alpha: 0.22,
+} as const;
+
 /** Retro CRT/VHS dressing — a permanent low-key scanline + grain overlay,
  *  plus the glitch strobe kicked off by the "static" ambient anomaly. Pure
  *  cosmetic texture; never affects gameplay or readability. */
@@ -347,6 +354,24 @@ export const DECORATION = {
   almondVisionBoostMs: 9000,
   /** World-unit pickup radius. */
   almondPickupRadius: 14,
+} as const;
+
+/**
+ * Found documents (letters/book pages) scattered per level — see
+ * game/content/lore.ts for the actual text and MainScene's
+ * buildLorePickups/updateLorePickups for placement + the [F] read prompt.
+ */
+export const LORE_PICKUP = {
+  /** Fewest documents placed on a level, never more than its authored pool. */
+  minPerLevel: 3,
+  /** Most documents placed on a level, capped by its authored pool size. */
+  maxPerLevel: 5,
+  /** World-unit pickup radius for the [F] read prompt. */
+  pickupRadius: 24,
+  /** Squared tile-distance from spawn a document must be placed beyond, so
+   *  none spawn directly underfoot at level start (same idea as the
+   *  Flashlight's "tucked away" spawn check). */
+  minSpawnDistSqTiles: 9,
 } as const;
 
 /** Per-level-style palettes (see {@link LevelStyle}). */
@@ -552,6 +577,8 @@ export const TEXTURES = {
   prop: (kind: PropKind) => `tex-prop-${kind}`,
   almondWater: "tex-almond-water",
   flashlight: "tex-flashlight-item",
+  loreLetter: "tex-lore-letter",
+  loreBook: "tex-lore-book",
   monster: "tex-monster",
   monsterWalk: "tex-monster-walk",
   monsterBack: "tex-monster-back",
@@ -588,6 +615,20 @@ export const MONSTER_TINT = {
   stalker: 0xd8d0e8, // bone-pale, almost still-life — the "don't look away" thing
 } as const;
 
+/**
+ * Ambient patrol monsters (see MainScene.updateMonsterFogVisibility) read as
+ * glimpses in the dark, not a crowd standing in the open: only ever the one
+ * nearest the player is drawn, faded toward the fog rim same as the tiles,
+ * and capped below full opacity even point-blank — applies on every level,
+ * not just Level 0.
+ */
+export const MONSTER_STEALTH = {
+  /** Sprite alpha cap even at point-blank range. */
+  maxAlpha: 0.88,
+  /** Sprite alpha floor just before it fades out at the sight radius' rim. */
+  minAlpha: 0.12,
+} as const;
+
 export const SCENES = {
   boot: "BootScene",
   preload: "PreloadScene",
@@ -595,9 +636,9 @@ export const SCENES = {
 } as const;
 
 export const VISIBILITY = {
-  revealRadiusTiles: 8,
+  revealRadiusTiles: 6,
   losStepTiles: 0.25,
-  dimAlpha: 0.4,
+  dimAlpha: 0.58,
   /** How long a tile's fog fades between states — the "cleaner" smooth reveal
    *  instead of an instant pop. */
   fadeMs: 260,

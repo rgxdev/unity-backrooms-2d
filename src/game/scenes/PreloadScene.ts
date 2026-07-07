@@ -114,6 +114,8 @@ export class PreloadScene extends Phaser.Scene {
     }
     tasks.push(() => this.makeAlmondWater(TEXTURES.almondWater));
     tasks.push(() => this.makeFlashlight(TEXTURES.flashlight));
+    tasks.push(() => this.makeLoreLetter(TEXTURES.loreLetter));
+    tasks.push(() => this.makeLoreBook(TEXTURES.loreBook));
     for (const skin of SKINS) {
       tasks.push(
         () =>
@@ -724,6 +726,52 @@ export class PreloadScene extends Phaser.Scene {
     g.fillEllipse(15.5, 8, 12, 9);
     g.fillStyle(0xfff6cf, 1);
     g.fillEllipse(15.5, 8, 8, 6);
+
+    g.generateTexture(key, t, t);
+    g.destroy();
+  }
+
+  /** A found letter — a folded, slightly curled sheet of paper, pale against
+   *  every level's palette so it reads as "not part of the room" at a glance
+   *  (same "notice me" language as {@link makeAlmondWater}). */
+  private makeLoreLetter(key: string): void {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    const t = TILE_SIZE;
+
+    g.fillStyle(COLORS.almondGlow, 0.16);
+    g.fillEllipse(t / 2, t / 2 + 2, 20, 20);
+    g.fillStyle(COLORS.shadow, 0.28);
+    g.fillEllipse(t / 2, t - 7, 9, 3);
+
+    // Folded paper sheet, dog-eared corner, a few scrawled lines.
+    this.rr(g, COLORS.almondLabel, 9, 8, 15, 18, 1);
+    g.fillStyle(COLORS.propCardboardDark, 0.5);
+    g.fillTriangle(20, 8, 24, 8, 24, 12);
+    this.px(g, COLORS.propWoodDark, 12, 13, 9, 1, 0.6);
+    this.px(g, COLORS.propWoodDark, 12, 16, 9, 1, 0.6);
+    this.px(g, COLORS.propWoodDark, 12, 19, 6, 1, 0.6);
+
+    g.generateTexture(key, t, t);
+    g.destroy();
+  }
+
+  /** A found book / torn field-guide page — thicker than a letter, with a
+   *  visible spine, so it reads as distinct from the single-sheet letter. */
+  private makeLoreBook(key: string): void {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    const t = TILE_SIZE;
+
+    g.fillStyle(COLORS.almondGlow, 0.16);
+    g.fillEllipse(t / 2, t / 2 + 2, 20, 20);
+    g.fillStyle(COLORS.shadow, 0.3);
+    g.fillEllipse(t / 2, t - 7, 10, 3);
+
+    // Closed book: dark cover, pale page edges, a bound spine down the middle.
+    this.rr(g, COLORS.propWoodDark, 8, 8, 17, 18, 1);
+    this.px(g, COLORS.almondLabel, 10, 9, 4, 16, 0.9);
+    this.px(g, COLORS.almondLabel, 20, 9, 3, 16, 0.9);
+    this.px(g, COLORS.propWood, 15, 8, 3, 18, 1);
+    this.px(g, COLORS.propWoodDark, 15, 8, 1, 18, 0.7);
 
     g.generateTexture(key, t, t);
     g.destroy();

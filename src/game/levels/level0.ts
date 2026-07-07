@@ -312,9 +312,11 @@ export function generateLevel0(input: GenerateInput): LevelData {
   const redCell = findCell(layout, "red");
   const blackoutCell = findCell(layout, "blackout");
   const pillarCell = findCell(layout, "pillar");
+  const holeCell = findCell(layout, "hole");
   const redRoom = rooms[redCell.r]![redCell.c]!;
   const blackoutRoom = rooms[blackoutCell.r]![blackoutCell.c]!;
   const fillerRoom = rooms[pillarCell.r]![pillarCell.c]!;
+  const holeRoom = rooms[holeCell.r]![holeCell.c]!;
   const zones = [
     {
       id: "red-room",
@@ -345,12 +347,18 @@ export function generateLevel0(input: GenerateInput): LevelData {
     },
   ];
 
-  // A thing lurks in the Red Room; a pursuer waits by the exit.
+  // A thing lurks in the Red Room; a pursuer waits by the exit. Any extra
+  // lurkers round-robin across the remaining sectors instead of all piling
+  // into one room — otherwise they share a room and patrol path, clumping
+  // into a crowd that's visible together nonstop instead of one threat at a
+  // time.
   const monsterCount = clamp(cfg.base.monsters + 1, 1, MAX_MONSTERS);
   const monsters = [makeMonster("pursuer", exitRoom)];
   if (monsterCount > 1) monsters.push(makeMonster("red-lurker", redRoom));
+  const fillerRooms = [fillerRoom, blackoutRoom, holeRoom];
   for (let i = monsters.length; i < monsterCount; i++) {
-    monsters.push(makeMonster(`lurker-${i}`, fillerRoom));
+    const room = fillerRooms[(i - 2) % fillerRooms.length]!;
+    monsters.push(makeMonster(`lurker-${i}`, room));
   }
 
   // Never bury the spawn, exit, monster spawns or their patrol corners under a
