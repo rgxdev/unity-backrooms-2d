@@ -4,6 +4,16 @@ A performant, browser-based **2D pixel-art Backrooms horror game**. Next.js
 serves as the app shell (menu, settings, overlays); **all gameplay runs in
 Phaser** — Next.js and React never touch the game loop.
 
+## Screenshots
+
+| Main menu | In-game (fog of war + line of sight) |
+| --- | --- |
+| ![Main menu](docs/screenshots/menu.png) | ![Gameplay](docs/screenshots/game-explore.png) |
+
+| Settings | Skin selection (placeholder) |
+| --- | --- |
+| ![Settings](docs/screenshots/settings.png) | ![Skins](docs/screenshots/skins.png) |
+
 ## Goals
 
 - Explorable 2D Backrooms with rooms and corridors across multiple levels.
