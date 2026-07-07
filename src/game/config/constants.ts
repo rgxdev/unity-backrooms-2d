@@ -166,24 +166,248 @@ export const BLACKOUT_EVENT = {
 /** Never generate more monsters than this, whatever the difficulty/index. */
 export const MAX_MONSTERS = 8;
 
+/**
+ * Visual identity per the documented Backrooms levels — every official level
+ * gets its own wall/floor material and detailing, sourced from the wiki
+ * entry for that level:
+ *   lobby      — Level 0, The Lobby: mildew-yellow wallpaper, Berber carpet.
+ *   habitable  — Level 1, The Habitable Zone: bare-concrete warehouse.
+ *   pipedreams — Level 2, Pipe Dreams: grimy maintenance tunnel, rusted pipes.
+ *   poolrooms  — Level 3, Poolrooms: pristine white ceramic tile.
+ *   hazard     — Level 4, Run For Your Life: scorched concrete, hazard tape.
+ * Drives which baked wall/floor/exit textures a level uses (see
+ * {@link TEXTURES}).
+ */
+export const LEVEL_STYLES = [
+  "lobby",
+  "habitable",
+  "pipedreams",
+  "poolrooms",
+  "hazard",
+] as const;
+export type LevelStyle = (typeof LEVEL_STYLES)[number];
+
+/** Which decorative layer {@link StyleColorSet} draws on top of the base wall
+ *  fill — the thing that makes each level's material read distinctly. */
+export type WallPattern =
+  "wallpaper" | "concrete" | "pipes" | "tile" | "hazard";
+/** Which pattern {@link StyleColorSet} draws for a level's floor. */
+export type FloorPattern = "weave" | "concrete" | "tile";
+
+/**
+ * 4-bit wall autotile mask: each bit is set when that cardinal neighbour is
+ * NOT a wall (i.e. the wall tile's face is exposed to a room on that side).
+ * A wall tile deep inside a solid mass has mask 0 and renders as a flat,
+ * seamless slab — only exposed faces get a bevel/trim, so a bank of wall
+ * tiles reads as one connected structure instead of individually outlined
+ * blocks.
+ */
+export const WALL_MASK = { NORTH: 1, EAST: 2, SOUTH: 4, WEST: 8 } as const;
+/** Every possible 4-bit neighbour combination — baked once per style at preload. */
+export const WALL_MASK_COUNT = 16;
+
+export interface StyleColorSet {
+  /** Deterministic-noise seed offset so styles don't share identical grain. */
+  seed: number;
+  floor: number;
+  floorWeaveHi: number;
+  floorWeaveLo: number;
+  floorStain: number;
+  wall: number;
+  wallStripe: number;
+  wallStripeGap: number;
+  wallHi: number;
+  wallHi2: number;
+  wallShade: number;
+  wallShade2: number;
+  wallDark: number;
+  wallSpeckleHi: number;
+  wallSpeckleLo: number;
+  wallPattern: WallPattern;
+  floorPattern: FloorPattern;
+  /** Pattern-specific detail colour (pipe metal / tile grout / hazard tape). */
+  accent: number;
+  /** Secondary pattern-specific detail colour (pipe shadow / hazard tape 2). */
+  accent2: number;
+  /** Colour a monster's neutral tint is subtly blended toward on this level —
+   *  same silhouette everywhere, but each level's threat feels faintly "of
+   *  the place" it lurks in. */
+  monsterMood: number;
+}
+
+/** How many baked variants exist per wall (style, mask) and per floor style —
+ *  variant 0 is always the clean baseline; the rest layer in extra grime and
+ *  one deliberately unsettling detail (see {@link PreloadScene}) so a level
+ *  doesn't read as one texture stamped everywhere. */
+export const WALL_VARIANTS = 3;
+export const FLOOR_VARIANTS = 3;
+
+/** Small scattered set-dressing props, two per style — pure decoration
+ *  (no collider), placed sparsely across floor tiles. */
+export type PropKind =
+  | "chair"
+  | "boxes"
+  | "crate"
+  | "barrel"
+  | "valve"
+  | "pipecart"
+  | "drain"
+  | "crack"
+  | "sign"
+  | "scorchpile";
+
+export const STYLE_PROPS: Record<LevelStyle, readonly [PropKind, PropKind]> = {
+  lobby: ["chair", "boxes"],
+  habitable: ["crate", "barrel"],
+  pipedreams: ["valve", "pipecart"],
+  poolrooms: ["drain", "crack"],
+  hazard: ["sign", "scorchpile"],
+};
+
+/** Tuning for ambient decoration/collectible scatter — see MainScene's
+ *  hash-based placement pass. */
+export const DECORATION = {
+  /** Fraction of eligible floor tiles that get a prop (~1 in 90). */
+  propChance: 1 / 90,
+  /** Fraction of eligible floor tiles that get an Almond Water pickup. */
+  almondChance: 1 / 260,
+  /** Hard cap on Almond Water pickups per level, however large the map. */
+  almondMaxPerLevel: 6,
+  /** Extra reveal-radius tiles granted for a sip of Almond Water. */
+  almondVisionBoostTiles: 2.5,
+  /** How long the vision boost lasts (ms). */
+  almondVisionBoostMs: 9000,
+  /** World-unit pickup radius. */
+  almondPickupRadius: 14,
+} as const;
+
+/** Per-level-style palettes (see {@link LevelStyle}). */
+export const STYLE_COLORS: Record<LevelStyle, StyleColorSet> = {
+  // Level 0 "The Lobby" — sickly, mildewed office wallpaper over a seamless,
+  // slightly damp Berber carpet. Wiki: "closer to a brownish beige when
+  // viewed in isolation" rather than pure yellow.
+  lobby: {
+    seed: 401,
+    floor: 0xac9a5c,
+    floorWeaveHi: 0xc2ad70,
+    floorWeaveLo: 0x8a7a44,
+    floorStain: 0x5c5230,
+    wall: 0xcabb78,
+    wallStripe: 0xb9aa66,
+    wallStripeGap: 7,
+    wallHi: 0xe4d69e,
+    wallHi2: 0xdacb8c,
+    wallShade: 0x9c8a52,
+    wallShade2: 0xb0a066,
+    wallDark: 0x6f602f,
+    wallSpeckleHi: 0xe8dcae,
+    wallSpeckleLo: 0x5f5a30,
+    wallPattern: "wallpaper",
+    floorPattern: "weave",
+    accent: 0xb9aa66,
+    accent2: 0x6f602f,
+    monsterMood: 0xfff0c0,
+  },
+  // Level 1 "The Habitable Zone" — a massive warehouse of bare concrete
+  // floors and walls with exposed rebar and dim fluorescent light. Also the
+  // base industrial palette every deeper level derives from.
+  habitable: {
+    seed: 811,
+    floor: 0x8c8f92,
+    floorWeaveHi: 0x9fa2a5,
+    floorWeaveLo: 0x6f7274,
+    floorStain: 0x3f4244,
+    wall: 0x9a9c9e,
+    wallStripe: 0x86888a,
+    wallStripeGap: 11,
+    wallHi: 0xc4c6c8,
+    wallHi2: 0xb4b6b8,
+    wallShade: 0x707274,
+    wallShade2: 0x84868a,
+    wallDark: 0x505254,
+    wallSpeckleHi: 0xd0d2d4,
+    wallSpeckleLo: 0x45474a,
+    wallPattern: "concrete",
+    floorPattern: "concrete",
+    accent: 0x86888a,
+    accent2: 0x505254,
+    monsterMood: 0xd8dde0,
+  },
+  // Level 2 "Pipe Dreams" — a dim, decrepit maintenance tunnel: grimy dark
+  // concrete, mould speckle, and rusted pipes lining the walls.
+  pipedreams: {
+    seed: 1201,
+    floor: 0x4a4438,
+    floorWeaveHi: 0x5c5646,
+    floorWeaveLo: 0x322e22,
+    floorStain: 0x1c1a12,
+    wall: 0x565045,
+    wallStripe: 0x494336,
+    wallStripeGap: 9,
+    wallHi: 0x7a7260,
+    wallHi2: 0x6c6552,
+    wallShade: 0x3a362a,
+    wallShade2: 0x494336,
+    wallDark: 0x252017,
+    wallSpeckleHi: 0x8a8268,
+    wallSpeckleLo: 0x1f1c12,
+    wallPattern: "pipes",
+    floorPattern: "concrete",
+    accent: 0xac5a2e,
+    accent2: 0x6b3f22,
+    monsterMood: 0xe0a878,
+  },
+  // Level 3 "Poolrooms" — pristine, seamless white ceramic tile throughout,
+  // with a faint blue-green tinge from the standing water.
+  poolrooms: {
+    seed: 2301,
+    floor: 0xe4ecec,
+    floorWeaveHi: 0xf2f8f8,
+    floorWeaveLo: 0xc7d6d6,
+    floorStain: 0x9fc4c2,
+    wall: 0xe8f0ef,
+    wallStripe: 0xcfe0df,
+    wallStripeGap: 8,
+    wallHi: 0xffffff,
+    wallHi2: 0xf4fafa,
+    wallShade: 0xb9cccb,
+    wallShade2: 0xd2e2e1,
+    wallDark: 0x8fa8a6,
+    wallSpeckleHi: 0xffffff,
+    wallSpeckleLo: 0xcfe0df,
+    wallPattern: "tile",
+    floorPattern: "tile",
+    accent: 0x6fd0c8,
+    accent2: 0x2c8f8a,
+    monsterMood: 0xd0f0ec,
+  },
+  // Level 4 "Run For Your Life" — the final, most dangerous stretch: scorched
+  // concrete and hazard tape rather than a documented wiki area.
+  hazard: {
+    seed: 3401,
+    floor: 0x3a2620,
+    floorWeaveHi: 0x4c332a,
+    floorWeaveLo: 0x241813,
+    floorStain: 0x140d0a,
+    wall: 0x4a3228,
+    wallStripe: 0x38261e,
+    wallStripeGap: 9,
+    wallHi: 0x6e4c3c,
+    wallHi2: 0x5f4234,
+    wallShade: 0x2a1c16,
+    wallShade2: 0x38261e,
+    wallDark: 0x180f0b,
+    wallSpeckleHi: 0x7a5a44,
+    wallSpeckleLo: 0x140c09,
+    wallPattern: "hazard",
+    floorPattern: "concrete",
+    accent: 0xe0a838,
+    accent2: 0x1a1410,
+    monsterMood: 0xffb078,
+  },
+} as const;
+
 export const COLORS = {
-  // Woven carpet floor — warm mustard with visible thread weave
-  floor: 0xc4b158,
-  floorAlt: 0xbaa74f,
-  floorWeaveHi: 0xd8c66d,
-  floorWeaveLo: 0x9c8b3d,
-  floorSeam: 0x83732f,
-  // Worn plaster wall — soft rounded volume, not a flat stamped block
-  wall: 0xdccd78,
-  wallStripe: 0xcdbc63,
-  wallHi: 0xf0e6a6,
-  wallHi2: 0xe6d98c,
-  wallShade: 0xa8964a,
-  wallShade2: 0xbfae5e,
-  wallDark: 0x7a692f,
-  wallTrim: 0x5f5127,
-  wallSpeckleHi: 0xf7efc0,
-  wallSpeckleLo: 0x8f7e3e,
   // Top-down character sprite
   playerSkin: 0xe8b78a,
   playerSkinShade: 0xcf9b6f,
@@ -205,6 +429,9 @@ export const COLORS = {
   monsterMaw: 0xe8e2c4,
   monsterMawShade: 0xb8b190,
   shadow: 0x000000,
+  // Debris scattered by the exit breach — neutral, independent of level style.
+  rubbleShade: 0x726a5c,
+  rubbleDark: 0x433d33,
   // Bottomless hole (Level 0 "Hole Variation")
   holeRim: 0x2a2411,
   holeEdge: 0x0d0b06,
@@ -214,6 +441,23 @@ export const COLORS = {
   exitGlow: 0x6bf09a,
   exitCore: 0x9dffc0,
   fog: 0x05050a,
+  // Exposed structural rebar, poking through a chipped concrete wall.
+  rebarRust: 0xa8552e,
+  // Generic set-dressing prop materials, independent of level style.
+  propWood: 0x7a5636,
+  propWoodDark: 0x4d3520,
+  propMetal: 0x8a8d90,
+  propMetalDark: 0x54575a,
+  propCardboard: 0xc2a06a,
+  propCardboardDark: 0x8c7148,
+  propSignBg: 0xe8c22a,
+  propSignDark: 0x1a1410,
+  // Almond Water pickup — the Backrooms survival staple.
+  almondGlass: 0x8fae62,
+  almondGlassHi: 0xbcd68f,
+  almondLiquid: 0xd8c98a,
+  almondLabel: 0xf4ecd2,
+  almondGlow: 0xeaffb0,
 } as const;
 
 /**
@@ -229,10 +473,16 @@ export const ZONE_TINT: Record<string, number> = {
 export const BLACKOUT_MIN_ALPHA = 0.62;
 
 export const TEXTURES = {
-  floor: "tex-floor",
-  floorAlt: "tex-floor-alt",
-  wall: "tex-wall",
-  wallCrack: "tex-wall-crack",
+  /** Baked per-style, per-neighbour-mask, per-variant wall slab (see
+   *  {@link WALL_MASK}, {@link WALL_VARIANTS}). */
+  wall: (style: LevelStyle, mask: number, variant: number) =>
+    `tex-wall-${style}-${mask}-${variant}`,
+  wallCrack: (style: LevelStyle) => `tex-wall-crack-${style}`,
+  floor: (style: LevelStyle, variant: number) =>
+    `tex-floor-${style}-${variant}`,
+  exit: (style: LevelStyle) => `tex-exit-${style}`,
+  prop: (kind: PropKind) => `tex-prop-${kind}`,
+  almondWater: "tex-almond-water",
   player: "tex-player",
   playerWalk: "tex-player-walk",
   playerBack: "tex-player-back",
@@ -241,7 +491,6 @@ export const TEXTURES = {
   monsterWalk: "tex-monster-walk",
   monsterBack: "tex-monster-back",
   monsterBackWalk: "tex-monster-back-walk",
-  exit: "tex-exit",
   hole: "tex-hole",
   rubble: "tex-rubble",
 } as const;

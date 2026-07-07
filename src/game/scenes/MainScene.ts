@@ -2,17 +2,23 @@ import Phaser from "phaser";
 import {
   BLACKOUT_EVENT,
   BLACKOUT_MIN_ALPHA,
+  DECORATION,
   DIFFICULTY_CONFIG,
   DREAD,
   EXIT_DREAD,
   FEAR,
+  FLOOR_VARIANTS,
   JUMPSCARE,
   MONSTER_TINT,
   SCENES,
   STALKER,
+  STYLE_COLORS,
+  STYLE_PROPS,
   TEXTURES,
   TILE_SIZE,
   VISIBILITY,
+  WALL_MASK,
+  WALL_VARIANTS,
   ZONE_TINT,
 } from "@/game/config/constants";
 import type { Difficulty } from "@/lib/schemas/settings";
@@ -38,6 +44,7 @@ import { StalkerAI, StalkerState } from "@/game/ai/StalkerAI";
 import type { Vec2 } from "@/game/ai/steering";
 import { getSettings } from "@/lib/settings-store";
 import { completeLevel, getProgress } from "@/lib/progress-store";
+import { hash01 } from "@/game/util/hash";
 
 const FOG_ALPHA: Record<number, number> = {
   [TileVisibility.Unseen]: 1,
@@ -102,6 +109,11 @@ export class MainScene extends Phaser.Scene {
   private vignetteFilter: Phaser.Filters.Vignette | null = null;
   private barrelFilter: Phaser.Filters.Barrel | null = null;
 
+  /** Scattered Almond Water pickups still on the floor. */
+  private almondBottles: Phaser.GameObjects.Image[] = [];
+  private visionBoosted = false;
+  private visionBoostUntil = 0;
+
   constructor() {
     super(SCENES.main);
   }
@@ -147,6 +159,7 @@ export class MainScene extends Phaser.Scene {
 
     this.buildZoneThemeMasks();
     this.buildTiles();
+    this.buildDecorations();
     this.buildHiddenZoneMask();
     this.buildFog();
     this.spawnPlayer();
@@ -201,6 +214,9 @@ export class MainScene extends Phaser.Scene {
     this.nextBlackoutAt = -1;
     this.vignetteFilter = null;
     this.barrelFilter = null;
+    this.almondBottles = [];
+    this.visionBoosted = false;
+    this.visionBoostUntil = 0;
   }
 
   private isWallTile(x: number, y: number): boolean {
@@ -233,30 +249,174 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
+  /** 4-bit autotile mask for a wall tile: a bit is set when that cardinal
+   *  neighbour is NOT a wall, i.e. this face is exposed to a room and should
+   *  get a bevel/trim. Walls deep inside a solid mass (mask 0) render as a
+   *  flat, seamless slab instead of an individually outlined block. */
+  private wallMask(x: number, y: number): number {
+    let mask = 0;
+    if (!this.isWallTile(x, y - 1)) mask |= WALL_MASK.NORTH;
+    if (!this.isWallTile(x + 1, y)) mask |= WALL_MASK.EAST;
+    if (!this.isWallTile(x, y + 1)) mask |= WALL_MASK.SOUTH;
+    if (!this.isWallTile(x - 1, y)) mask |= WALL_MASK.WEST;
+    return mask;
+  }
+
+  /**
+   * Pick a baked variant (0..count-1) for a tile, weighted so the clean
+   * baseline dominates, moderate wear is common, and the rare "creepy
+   * detail" variant (see PreloadScene) stays rare — deterministic per tile
+   * coordinate, so it's stable across re-renders without storing state.
+   */
+  private pickVariant(
+    x: number,
+    y: number,
+    seed: number,
+    count: number,
+  ): number {
+    const n = hash01(x, y, seed);
+    if (count === 3) {
+      if (n < 0.55) return 0;
+      if (n < 0.85) return 1;
+      return 2;
+    }
+    return Math.min(count - 1, Math.floor(n * count));
+  }
+
   private buildTiles(): void {
     this.walls = this.physics.add.staticGroup();
     const { width, height, tiles } = this.level;
+    const style = this.theme.style;
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const px = x * TILE_SIZE + TILE_SIZE / 2;
         const py = y * TILE_SIZE + TILE_SIZE / 2;
         const kind = tiles[y * width + x];
         if (kind === TileKind.Wall) {
-          (
-            this.walls.create(px, py, TEXTURES.wall) as Phaser.GameObjects.Image
-          ).setTint(this.theme.tint);
+          const mask = this.wallMask(x, y);
+          const variant = this.pickVariant(x, y, 11, WALL_VARIANTS);
+          const key = TEXTURES.wall(style, mask, variant);
+          (this.walls.create(px, py, key) as Phaser.GameObjects.Image).setTint(
+            this.theme.tint,
+          );
         } else if (kind === TileKind.Hole) {
           // Bottomless pit — no collider, but lethal to step on (see update()).
           this.add.image(px, py, TEXTURES.hole).setDepth(-9);
         } else {
-          const alt = (x + y) % 2 === 0;
           const zoneTint = this.floorTintByTile[y * width + x] ?? -1;
+          const variant = this.pickVariant(x, y, 23, FLOOR_VARIANTS);
           this.add
-            .image(px, py, alt ? TEXTURES.floor : TEXTURES.floorAlt)
+            .image(px, py, TEXTURES.floor(style, variant))
             .setTint(zoneTint >= 0 ? zoneTint : this.theme.tint)
             .setDepth(-10);
         }
       }
+    }
+  }
+
+  /**
+   * Scatter ambient set-dressing props and Almond Water pickups across
+   * floor tiles — deterministic per tile coordinate (same hash approach as
+   * {@link pickVariant}) so the level doesn't need extra RNG plumbing, but
+   * different enough per tile that no two rooms feel identically dressed.
+   */
+  private buildDecorations(): void {
+    const { width, height, tiles, spawn, exit } = this.level;
+    const props = STYLE_PROPS[this.theme.style];
+    let almondCount = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (tiles[y * width + x] !== TileKind.Floor) continue;
+        if (x === spawn.x && y === spawn.y) continue;
+        if (exit && x === exit.x && y === exit.y) continue;
+
+        const px = x * TILE_SIZE + TILE_SIZE / 2;
+        const py = y * TILE_SIZE + TILE_SIZE / 2;
+
+        if (
+          almondCount < DECORATION.almondMaxPerLevel &&
+          hash01(x, y, 41) < DECORATION.almondChance
+        ) {
+          this.spawnAlmondWater(px, py);
+          almondCount++;
+          continue;
+        }
+
+        if (hash01(x, y, 59) < DECORATION.propChance) {
+          const kind = props[hash01(x, y, 67) < 0.5 ? 0 : 1];
+          this.add.image(px, py, TEXTURES.prop(kind)).setDepth(-7);
+        }
+      }
+    }
+  }
+
+  /** A gently bobbing, glowing bottle of Almond Water — grants a brief vision
+   *  boost on pickup (see {@link collectAlmondWater}). */
+  private spawnAlmondWater(px: number, py: number): void {
+    const bottle = this.add.image(px, py, TEXTURES.almondWater).setDepth(-6);
+    this.tweens.add({
+      targets: bottle,
+      y: py - 3,
+      duration: 900 + Math.round(hash01(px, py, 71) * 300),
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.InOut",
+    });
+    this.tweens.add({
+      targets: bottle,
+      alpha: { from: 0.7, to: 1 },
+      duration: 650,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.InOut",
+    });
+    this.almondBottles.push(bottle);
+  }
+
+  /** Widens the fog-of-war reveal radius for a few seconds and pops the
+   *  bottle — a small, immediate reward for exploring off the beaten path. */
+  private collectAlmondWater(index: number, time: number): void {
+    const bottle = this.almondBottles[index];
+    if (!bottle) return;
+    this.almondBottles.splice(index, 1);
+    this.tweens.add({
+      targets: bottle,
+      alpha: 0,
+      scale: 1.4,
+      duration: 220,
+      onComplete: () => bottle.destroy(),
+    });
+    this.audio.chime();
+    this.cameras.main.flash(200, 200, 255, 190);
+
+    this.visionBoosted = true;
+    this.visionBoostUntil = time + DECORATION.almondVisionBoostMs;
+    this.visibility.setRadius(
+      VISIBILITY.revealRadiusTiles + DECORATION.almondVisionBoostTiles,
+    );
+    const tile = this.playerTile();
+    this.visibility.update(tile.x, tile.y, (x, y) => this.isWallTile(x, y));
+    this.refreshFog();
+  }
+
+  /** Every-frame check for a nearby Almond Water bottle, and the boost
+   *  reverting once its timer runs out. */
+  private updateAlmondWater(time: number): void {
+    for (let i = this.almondBottles.length - 1; i >= 0; i--) {
+      const bottle = this.almondBottles[i]!;
+      const dx = bottle.x - this.player.x;
+      const dy = bottle.y - this.player.y;
+      if (dx * dx + dy * dy <= DECORATION.almondPickupRadius ** 2) {
+        this.collectAlmondWater(i, time);
+      }
+    }
+
+    if (this.visionBoosted && time >= this.visionBoostUntil) {
+      this.visionBoosted = false;
+      this.visibility.setRadius(VISIBILITY.revealRadiusTiles);
+      const tile = this.playerTile();
+      this.visibility.update(tile.x, tile.y, (x, y) => this.isWallTile(x, y));
+      this.refreshFog();
     }
   }
 
@@ -315,10 +475,38 @@ export class MainScene extends Phaser.Scene {
     };
   }
 
+  /** Component-wise lerp between two hex colours — used to fold a level's
+   *  mood colour subtly into a monster's role tint, so the same silhouette
+   *  reads as faintly "of the place" it lurks in on every level. */
+  private blendTint(base: number, mood: number, amount: number): number {
+    const br = (base >> 16) & 0xff;
+    const bg = (base >> 8) & 0xff;
+    const bb = base & 0xff;
+    const mr = (mood >> 16) & 0xff;
+    const mg = (mood >> 8) & 0xff;
+    const mb = mood & 0xff;
+    const r = Math.round(br + (mr - br) * amount);
+    const g = Math.round(bg + (mg - bg) * amount);
+    const b = Math.round(bb + (mb - bb) * amount);
+    return (r << 16) | (g << 8) | b;
+  }
+
+  /** Blend a role's base tint toward this level's mood colour. */
+  private roleTint(base: number): number {
+    return this.blendTint(
+      base,
+      STYLE_COLORS[this.theme.style].monsterMood,
+      0.3,
+    );
+  }
+
   /** Pursuer reads hottest (it's the one that ends the level); everything
-   *  else patrols as the neutral default. */
+   *  else patrols as the neutral default — both subtly tinted toward this
+   *  level's mood colour. */
   private monsterTint(id: string): number {
-    return id === "pursuer" ? MONSTER_TINT.pursuer : MONSTER_TINT.lurker;
+    return this.roleTint(
+      id === "pursuer" ? MONSTER_TINT.pursuer : MONSTER_TINT.lurker,
+    );
   }
 
   private spawnMonsters(): void {
@@ -384,7 +572,7 @@ export class MainScene extends Phaser.Scene {
       c.y,
       [],
       DEFAULT_MONSTER_TUNING,
-      MONSTER_TINT.stalker,
+      this.roleTint(MONSTER_TINT.stalker),
       { noWalkCycle: true },
     );
     monster.setDepth(91);
@@ -434,7 +622,9 @@ export class MainScene extends Phaser.Scene {
     const exit = this.level.exit;
     if (!exit) return;
     const c = this.centreOf(exit.x, exit.y);
-    const door = this.add.image(c.x, c.y, TEXTURES.exit).setDepth(-5);
+    const door = this.add
+      .image(c.x, c.y, TEXTURES.exit(this.theme.style))
+      .setDepth(-5);
     // Restless flicker — the seam of light guttering like a dying tube.
     this.tweens.add({
       targets: door,
@@ -472,7 +662,7 @@ export class MainScene extends Phaser.Scene {
       const nc = this.centreOf(nx, ny);
       if (this.isWallTile(nx, ny)) {
         this.add
-          .image(nc.x, nc.y, TEXTURES.wallCrack)
+          .image(nc.x, nc.y, TEXTURES.wallCrack(this.theme.style))
           .setTint(this.theme.tint)
           .setDepth(1);
       } else {
@@ -1005,7 +1195,7 @@ export class MainScene extends Phaser.Scene {
         c.y,
         [],
         DEFAULT_MONSTER_TUNING,
-        MONSTER_TINT.jumpscare,
+        this.roleTint(MONSTER_TINT.jumpscare),
         { noWalkCycle: true },
       );
       monster.setDepth(90);
@@ -1155,6 +1345,8 @@ export class MainScene extends Phaser.Scene {
 
     // One wrong step in the Hole Variation and you fall — no monster needed.
     if (!this.ended && this.isHoleTile(tileX, tileY)) this.onFall();
+
+    if (!this.ended) this.updateAlmondWater(time);
 
     this.updateAi(time, delta);
 
