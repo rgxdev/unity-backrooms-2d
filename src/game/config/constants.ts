@@ -41,8 +41,12 @@ export const PURSUIT_CATCH = {
   /** How far the monster is knocked back from the player on a non-lethal
    *  catch — comfortably past killRadius so it doesn't re-trigger next frame. */
   knockbackDistance: 140,
-  /** Minimum time between non-lethal catch reactions (ms). */
-  cooldownMs: 1500,
+  /** How long the monster holds still after the shove before resuming the
+   *  chase — the real gate against an instant re-catch loop. */
+  stunMs: 2200,
+  /** Minimum time between non-lethal catch reactions (ms). Kept >= stunMs so
+   *  the monster is never chasing again before it's allowed to react again. */
+  cooldownMs: 2200,
 } as const;
 
 /**

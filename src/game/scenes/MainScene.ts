@@ -93,6 +93,9 @@ export class MainScene extends Phaser.Scene {
   /** Gates {@link onPursuitCatch} so a non-lethal catch reacts once, then
    *  gives the shove some time to open a gap before it can fire again. */
   private pursuitCatchCooldownUntil = 0;
+  /** Per-monster: while stunned after a non-lethal catch it holds still
+   *  instead of immediately re-closing the gap and re-triggering the catch. */
+  private readonly pursuitStunnedUntil = new WeakMap<Monster, number>();
   /** True once the level has resolved (escaped or died); freezes gameplay. */
   private ended = false;
   private restarted = false;
@@ -792,7 +795,9 @@ export class MainScene extends Phaser.Scene {
         let nearest = Infinity;
         let closest: Monster | null = null;
         for (const m of this.monsters) {
-          m.pursue(playerPos, this.pursuitSpeed);
+          const stunnedUntil = this.pursuitStunnedUntil.get(m) ?? 0;
+          if (time < stunnedUntil) m.freeze();
+          else m.pursue(playerPos, this.pursuitSpeed);
           const d = m.distanceTo(playerPos);
           if (d < nearest) {
             nearest = d;
@@ -988,6 +993,9 @@ export class MainScene extends Phaser.Scene {
     const now = this.time.now;
     if (now < this.pursuitCatchCooldownUntil) return;
     this.pursuitCatchCooldownUntil = now + PURSUIT_CATCH.cooldownMs;
+    // Hold still after the shove — otherwise it just beelines back in and
+    // re-triggers this same beat on a loop the instant the cooldown clears.
+    this.pursuitStunnedUntil.set(monster, now + PURSUIT_CATCH.stunMs);
 
     this.audio.roar();
     this.cameras.main.flash(300, 120, 0, 0);
