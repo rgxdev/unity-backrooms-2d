@@ -1691,7 +1691,13 @@ export class MainScene extends Phaser.Scene {
     const dx = tileX - this.lastTileX;
     const dy = tileY - this.lastTileY;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    const radius = VISIBILITY.revealRadiusTiles;
+    // The flashlight reveals tiles well past the ambient radius — without
+    // this, every tile beyond the ambient falloff band capped out at the
+    // same dim alpha as the rim of ordinary vision, so the beam looked much
+    // brighter than it actually made things visible.
+    const radius = this.flashlightOn
+      ? Math.max(VISIBILITY.revealRadiusTiles, FLASHLIGHT.coneRadiusTiles)
+      : VISIBILITY.revealRadiusTiles;
     const band = VISIBILITY.edgeFalloffTiles;
     const t = (dist - (radius - band)) / band;
     return Phaser.Math.Clamp(t, 0, 1);

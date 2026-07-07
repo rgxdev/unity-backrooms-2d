@@ -212,7 +212,7 @@ export const FLASHLIGHT = {
   /** Half-angle of the light cone, in radians. */
   coneHalfAngleRad: (26 * Math.PI) / 180,
   /** How far (in tiles) the beam reveals. */
-  coneRadiusTiles: 11,
+  coneRadiusTiles: 13,
   /** Throttle (ms) between recomputing the beam's revealed tiles. */
   recalcMs: 70,
 } as const;
