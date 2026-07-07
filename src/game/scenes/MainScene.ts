@@ -1165,12 +1165,17 @@ export class MainScene extends Phaser.Scene {
     this.audio.updateHeartbeat(fear, time);
     const v = this.vignetteFilter;
     if (v) {
+      // The vignette is a camera-wide post filter — it darkens the flashlight
+      // beam right along with everything else, so at high fear (a monster
+      // close by) it was crushing the beam dark exactly when you'd want it
+      // most. Damp the fear-driven darkening while the flashlight is on.
+      const vignetteFear = this.flashlightOn ? fear * 0.45 : fear;
       v.strength =
         FEAR.vignetteMinStrength +
-        fear * (FEAR.vignetteMaxStrength - FEAR.vignetteMinStrength);
+        vignetteFear * (FEAR.vignetteMaxStrength - FEAR.vignetteMinStrength);
       v.radius =
         FEAR.vignetteMaxRadius -
-        fear * (FEAR.vignetteMaxRadius - FEAR.vignetteMinRadius);
+        vignetteFear * (FEAR.vignetteMaxRadius - FEAR.vignetteMinRadius);
     }
   }
 
