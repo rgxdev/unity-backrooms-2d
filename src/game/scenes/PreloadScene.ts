@@ -116,7 +116,6 @@ export class PreloadScene extends Phaser.Scene {
     tasks.push(() => this.makeFlashlight(TEXTURES.flashlight));
     tasks.push(() => this.makeLoreLetter(TEXTURES.loreLetter));
     tasks.push(() => this.makeLoreBook(TEXTURES.loreBook));
-    tasks.push(() => this.makeLorePanel(TEXTURES.lorePanel));
     for (const skin of SKINS) {
       tasks.push(
         () =>
@@ -773,24 +772,6 @@ export class PreloadScene extends Phaser.Scene {
     this.px(g, COLORS.almondLabel, 20, 9, 3, 16, 0.9);
     this.px(g, COLORS.propWood, 15, 8, 3, 18, 1);
     this.px(g, COLORS.propWoodDark, 15, 8, 1, 18, 0.7);
-
-    g.generateTexture(key, t, t);
-    g.destroy();
-  }
-
-  /**
-   * A plain bordered-parchment tile, meant to be stretched via a NineSlice
-   * (see MainScene.buildLoreReader) into the full-screen document reader
-   * background — a rounded brown frame around a flat cream fill, with no
-   * inner detail, so it can be scaled to any panel size without tiling
-   * artefacts.
-   */
-  private makeLorePanel(key: string): void {
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
-    const t = TILE_SIZE;
-
-    this.rr(g, COLORS.propWoodDark, 0, 0, t, t, 1);
-    this.rr(g, COLORS.almondLabel, 4, 4, t - 8, t - 8, 1);
 
     g.generateTexture(key, t, t);
     g.destroy();

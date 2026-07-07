@@ -4,6 +4,7 @@ import {
   ANOMALY,
   BLACKOUT_EVENT,
   BLACKOUT_MIN_ALPHA,
+  COLORS,
   DECORATION,
   DIFFICULTY_CONFIG,
   DREAD,
@@ -204,7 +205,7 @@ export class MainScene extends Phaser.Scene {
    *  {@link buildLoreReader}. */
   private loreUi!: Phaser.GameObjects.Container;
   private loreVeil!: Phaser.GameObjects.Rectangle;
-  private lorePanel!: Phaser.GameObjects.NineSlice;
+  private lorePanel!: Phaser.GameObjects.Graphics;
   private loreTitleText!: Phaser.GameObjects.Text;
   private loreBodyText!: Phaser.GameObjects.Text;
   private lorePromptText!: Phaser.GameObjects.Text;
@@ -788,11 +789,26 @@ export class MainScene extends Phaser.Scene {
       .setOrigin(0, 0);
     ui.add(this.loreVeil);
 
+    // A plain rounded card — border rect behind a slightly-inset cream fill
+    // rect — instead of a stretched NineSlice, which tiled the tiny source
+    // texture's border across the whole panel and read as ruled notebook
+    // lines rather than a clean parchment sheet.
     const panelWidth = Math.min(460, cam.width - 40);
     const panelHeight = Math.min(300, cam.height - 60);
-    this.lorePanel = this.add
-      .nineslice(cx, cy, TEXTURES.lorePanel, undefined, panelWidth, panelHeight, 10, 10, 10, 10)
-      .setOrigin(0.5);
+    const panelX = cx - panelWidth / 2;
+    const panelY = cy - panelHeight / 2;
+    const inset = 7;
+    this.lorePanel = this.add.graphics();
+    this.lorePanel.fillStyle(COLORS.propWoodDark, 1);
+    this.lorePanel.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 14);
+    this.lorePanel.fillStyle(COLORS.almondLabel, 1);
+    this.lorePanel.fillRoundedRect(
+      panelX + inset,
+      panelY + inset,
+      panelWidth - inset * 2,
+      panelHeight - inset * 2,
+      10,
+    );
     ui.add(this.lorePanel);
 
     // Dark, ink-like text — the panel behind it is a pale parchment fill,
