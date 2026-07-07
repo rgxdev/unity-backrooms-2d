@@ -162,8 +162,12 @@ export class MainScene extends Phaser.Scene {
   /** Camera post-processing (WebGL only — no-ops gracefully otherwise). */
   private vignetteFilter: SoftVignetteController | null = null;
   private barrelFilter: Phaser.Filters.Barrel | null = null;
-  /** Smoothed camera zoom driving the fear-based claustrophobic creep. */
-  private camZoom = 1;
+  /** Base camera zoom — tight POV so the visible play area stays small and
+   *  claustrophobic instead of showing off half the maze at once. */
+  private readonly baseZoom = 2.2;
+  /** Smoothed camera zoom driving the fear-based claustrophobic creep on
+   *  top of {@link baseZoom}. */
+  private camZoom = this.baseZoom;
 
   /** Permanent oldschool CRT dressing — scanlines + jittered film grain. */
   private scanlineOverlay: Phaser.GameObjects.TileSprite | null = null;
@@ -275,7 +279,7 @@ export class MainScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, worldW, worldH);
     this.cameras.main.setBounds(0, 0, worldW, worldH);
     this.cameras.main.setBackgroundColor(this.theme.fog);
-    this.cameras.main.setZoom(2);
+    this.cameras.main.setZoom(this.baseZoom);
     this.cameras.main.roundPixels = true;
 
     this.buildZoneThemeMasks();
@@ -344,7 +348,7 @@ export class MainScene extends Phaser.Scene {
     this.nextBlackoutAt = -1;
     this.vignetteFilter = null;
     this.barrelFilter = null;
-    this.camZoom = 1;
+    this.camZoom = this.baseZoom;
     this.scanlineOverlay = null;
     this.grainOverlay = null;
     this.nextGrainJitterAt = 0;
@@ -1548,7 +1552,7 @@ export class MainScene extends Phaser.Scene {
     // Claustrophobic creep: the camera slowly tightens in as danger nears,
     // easing back out once it passes — smoothed so a monster popping in/out
     // of range doesn't snap the zoom, just nudges it.
-    const targetZoom = 1 + fear * 0.06;
+    const targetZoom = this.baseZoom + fear * 0.13;
     this.camZoom = Phaser.Math.Linear(this.camZoom, targetZoom, 0.06);
     this.cameras.main.setZoom(this.camZoom);
 
