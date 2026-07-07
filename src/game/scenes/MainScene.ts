@@ -1473,7 +1473,10 @@ export class MainScene extends Phaser.Scene {
       ) {
         vis = TileVisibility.Unseen;
       }
-      if (this.fogState[i] === vis) continue;
+      // Visible tiles have a distance-based alpha (edgeFalloff) that keeps
+      // changing as the player moves closer, even though the discrete state
+      // stays "Visible" — so they must keep recomputing every refresh.
+      if (this.fogState[i] === vis && vis !== TileVisibility.Visible) continue;
       this.fogState[i] = vis;
       let alpha = FOG_ALPHA[vis] ?? 1;
       if (vis === TileVisibility.Visible) {
