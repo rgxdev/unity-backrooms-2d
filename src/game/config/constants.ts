@@ -3,17 +3,22 @@ import type { Difficulty } from "@/lib/schemas/settings";
 export const TILE_SIZE = 32;
 
 export const PLAYER = {
-  size: 14,
+  size: 18,
   speed: 140,
   sprintSpeed: 215,
-  bodyInset: 2,
+  bodyInset: 3,
   /** World-unit radius a monster can hear the player sprint. */
   noiseRadius: 150,
+  /** Velocity ramp-up when accelerating into a direction (units/sec^2). */
+  acceleration: 1500,
+  /** Velocity ramp-down when stopping/turning (units/sec^2) — snappier than
+   *  acceleration so stops feel responsive, not floaty. */
+  deceleration: 2100,
 } as const;
 
 export const MONSTER = {
-  size: 16,
-  bodyInset: 3,
+  size: 22,
+  bodyInset: 4,
 } as const;
 
 /** Scripted-dread pacing knobs (see MonsterDirector). */
@@ -81,27 +86,38 @@ export const COLORS = {
   floorWeaveHi: 0xd8c66d,
   floorWeaveLo: 0x9c8b3d,
   floorSeam: 0x83732f,
-  // Wallpaper wall block with pseudo-3D bevel
+  // Worn plaster wall — soft rounded volume, not a flat stamped block
   wall: 0xdccd78,
   wallStripe: 0xcdbc63,
   wallHi: 0xf0e6a6,
+  wallHi2: 0xe6d98c,
   wallShade: 0xa8964a,
+  wallShade2: 0xbfae5e,
   wallDark: 0x7a692f,
   wallTrim: 0x5f5127,
+  wallSpeckleHi: 0xf7efc0,
+  wallSpeckleLo: 0x8f7e3e,
   // Top-down character sprite
   playerSkin: 0xe8b78a,
   playerSkinShade: 0xcf9b6f,
   playerHair: 0x5a3b22,
+  playerHairHi: 0x7a5638,
   playerShirt: 0x4d84c4,
+  playerShirtHi: 0x6aa2df,
   playerShirtShade: 0x38629a,
   playerPants: 0x3b3a58,
+  playerPantsShade: 0x2b2a42,
   playerOutline: 0x1a180f,
   // Lurking monster
   monsterBody: 0x39304a,
+  monsterBodyHi: 0x4a3f5e,
   monsterBodyShade: 0x271f33,
   monsterLimb: 0x2b2338,
   monsterEye: 0xff5230,
+  monsterEyeGlow: 0xff8a5c,
   monsterMaw: 0xe8e2c4,
+  monsterMawShade: 0xb8b190,
+  shadow: 0x000000,
   // Bottomless hole (Level 0 "Hole Variation")
   holeRim: 0x2a2411,
   holeEdge: 0x0d0b06,
@@ -145,4 +161,10 @@ export const VISIBILITY = {
   revealRadiusTiles: 6,
   losStepTiles: 0.25,
   dimAlpha: 0.55,
+  /** How long a tile's fog fades between states — the "cleaner" smooth reveal
+   *  instead of an instant pop. */
+  fadeMs: 260,
+  /** Width (in tiles) of the soft vignette band at the edge of the reveal
+   *  radius, so the sight radius reads as a gentle falloff, not a hard disc. */
+  edgeFalloffTiles: 1.6,
 } as const;

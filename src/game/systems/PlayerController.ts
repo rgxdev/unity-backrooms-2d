@@ -17,13 +17,24 @@ type Keys = {
 /** Emitted when the player makes noise a monster can hear (sprinting). */
 export type NoiseEmitter = (x: number, y: number) => void;
 
+/** Move `current` toward `target` by at most `step`, without overshoot. */
+function approach(current: number, target: number, step: number): number {
+  if (current < target) return Math.min(current + step, target);
+  if (current > target) return Math.max(current - step, target);
+  return current;
+}
+
 /**
  * Reads input and drives the arcade body. Velocity is set on a persistent
  * Vector2 (created once) to avoid allocating in the update loop.
+ *
+ * Movement ramps toward the target speed instead of snapping to it, so
+ * starting, stopping and turning feel smooth rather than instant/blocky.
  */
 export class PlayerController {
   private readonly keys: Keys;
   private readonly velocity = new Phaser.Math.Vector2();
+  private readonly targetVelocity = new Phaser.Math.Vector2();
 
   constructor(
     scene: Phaser.Scene,
@@ -51,25 +62,34 @@ export class PlayerController {
     ) as Keys;
   }
 
-  update(): void {
+  /** @param deltaMs Frame delta (ms) — drives the accel/decel ramp. */
+  update(deltaMs: number): void {
     const k = this.keys;
     const left = k.left.isDown || k.a.isDown;
     const right = k.right.isDown || k.d.isDown;
     const up = k.up.isDown || k.w.isDown;
     const down = k.down.isDown || k.s.isDown;
 
-    this.velocity.set(
+    this.targetVelocity.set(
       (right ? 1 : 0) - (left ? 1 : 0),
       (down ? 1 : 0) - (up ? 1 : 0),
     );
 
-    const moving = this.velocity.lengthSq() > 0;
+    const moving = this.targetVelocity.lengthSq() > 0;
     const sprinting = moving && k.shift.isDown;
     if (moving) {
-      this.velocity
+      this.targetVelocity
         .normalize()
         .scale(sprinting ? PLAYER.sprintSpeed : PLAYER.speed);
     }
+
+    const dt = deltaMs / 1000;
+    const rampRate = moving ? PLAYER.acceleration : PLAYER.deceleration;
+    const step = rampRate * dt;
+    this.velocity.set(
+      approach(this.velocity.x, this.targetVelocity.x, step),
+      approach(this.velocity.y, this.targetVelocity.y, step),
+    );
     this.player.setVelocity(this.velocity.x, this.velocity.y);
 
     // Sprinting is loud — nearby monsters can hear it and start searching.

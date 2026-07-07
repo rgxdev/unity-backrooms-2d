@@ -41,3 +41,13 @@ export function pick<T>(rng: Rng, items: readonly T[]): T {
 export function chance(rng: Rng, probability: number): boolean {
   return rng() < probability;
 }
+
+/** Fisher-Yates shuffle — returns a new array, leaves the input untouched. */
+export function shuffle<T>(rng: Rng, items: readonly T[]): T[] {
+  const result = items.slice();
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [result[i], result[j]] = [result[j] as T, result[i] as T];
+  }
+  return result;
+}

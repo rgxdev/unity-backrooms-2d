@@ -48,6 +48,18 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
       MONSTER.size - MONSTER.bodyInset * 2,
     );
     body.setCollideWorldBounds(true);
+
+    // Slow, uneven hunch-and-lurch — unsettling rather than a mechanical
+    // walk cycle, and independent of the physics body.
+    scene.tweens.add({
+      targets: this,
+      scaleY: 0.9,
+      scaleX: 1.06,
+      duration: 480,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.InOut",
+    });
   }
 
   private pos(): Vec2 {

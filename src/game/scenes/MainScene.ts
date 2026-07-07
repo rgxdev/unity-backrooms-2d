@@ -523,6 +523,22 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Soft vignette at the rim of the sight radius: tiles within the last
+   * `edgeFalloffTiles` of the reveal radius fade in gradually instead of
+   * popping fully clear, so the field of view reads as a gentle glow rather
+   * than a hard-edged disc.
+   */
+  private edgeFalloff(tileX: number, tileY: number): number {
+    const dx = tileX - this.lastTileX;
+    const dy = tileY - this.lastTileY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const radius = VISIBILITY.revealRadiusTiles;
+    const band = VISIBILITY.edgeFalloffTiles;
+    const t = (dist - (radius - band)) / band;
+    return Phaser.Math.Clamp(t, 0, 1);
+  }
+
   private refreshFog(): void {
     const width = this.level.width;
     for (let i = 0; i < this.fogState.length; i++) {
@@ -538,16 +554,28 @@ export class MainScene extends Phaser.Scene {
       if (this.fogState[i] === vis) continue;
       this.fogState[i] = vis;
       let alpha = FOG_ALPHA[vis] ?? 1;
+      if (vis === TileVisibility.Visible) {
+        const falloff = this.edgeFalloff(i % width, Math.floor(i / width));
+        alpha = falloff * VISIBILITY.dimAlpha;
+      }
       // Blackout Zones never fully light — keep a residual gloom.
       if (this.blackoutByTile[i] && alpha < BLACKOUT_MIN_ALPHA) {
         alpha = BLACKOUT_MIN_ALPHA;
       }
-      this.fogTiles[i]?.setAlpha(alpha);
+      const tile = this.fogTiles[i];
+      if (!tile) continue;
+      this.tweens.killTweensOf(tile);
+      this.tweens.add({
+        targets: tile,
+        alpha,
+        duration: VISIBILITY.fadeMs,
+        ease: "Sine.Out",
+      });
     }
   }
 
-  override update(time: number): void {
-    this.controller.update();
+  override update(time: number, delta: number): void {
+    this.controller.update(delta);
 
     const tileX = Math.floor(this.player.x / TILE_SIZE);
     const tileY = Math.floor(this.player.y / TILE_SIZE);

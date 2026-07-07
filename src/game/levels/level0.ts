@@ -1,13 +1,12 @@
 import { parseLevel, TileKind, type LevelData } from "@/lib/schemas/level";
 import { DIFFICULTY_CONFIG, MAX_MONSTERS } from "@/game/config/constants";
-import { chance, makeRng, type Rng } from "./rng";
+import { chance, makeRng, pick, randInt, shuffle, type Rng } from "./rng";
 import type { GenerateInput } from "./generate";
 
 /**
- * Level 0 — "The Lobby" — hand-authored to match the Backrooms wiki entry
- * (https://backrooms-wiki.wikidot.com/level-0). Instead of the generic room
- * generator, this lays the endless mono-yellow maze out as the documented
- * sub-sections, each with its own hazard:
+ * Level 0 — "The Lobby" — themed after the Backrooms wiki entry
+ * (https://backrooms-wiki.wikidot.com/level-0): the endless mono-yellow maze
+ * of documented sub-sections, each with its own hazard:
  *
  *   Arch Variation   — pale walls with archway pillars; the calm starting room.
  *   Pillar Variation — a miles-wide grid of pillars you weave between.
@@ -17,11 +16,18 @@ import type { GenerateInput } from "./generate";
  *   Manila Room      — a rare, calm safe room tucked beside the way out.
  *
  * The only way out is the same as the lore: survive to the far side and find
- * the flickering wall to throw yourself through — that becomes Level 1's entry.
+ * the flickering wall to throw yourself through — that becomes the next
+ * level's entry.
  *
- * The world is a 3×2 grid of sectors. Adjacent sectors are joined by doorways
- * so the whole floor is connected, and a hole-free route to the exit always
- * exists (top row + right column never contains pits).
+ * The world is a grid of sectors, but — unlike a hand-placed layout — *which*
+ * sector gets which hazard is rolled fresh every generation (see
+ * {@link buildLayout}), so no two plays share the same floor plan. Spawn
+ * always lands in an Arch corner and the exit in the Manila corner farthest
+ * from it (so the run always has real length); the remaining hazards are
+ * shuffled across the rest of the grid. Doorways are carved *after* hazards
+ * are painted in, so every sector-to-sector doorway forcibly floors its own
+ * path — a hole-free route from spawn to exit always exists no matter where
+ * the Hole Variation lands.
  */
 
 const COLS = 3;
@@ -29,13 +35,71 @@ const ROWS = 2;
 
 type Variation = "arch" | "pillar" | "hole" | "blackout" | "red" | "manila";
 
-// Sector layout (col-major within each row). Spawn is the arch room (0,0),
-// the exit + Manila room sit in the far sector (2,1). Holes are quarantined to
-// the interior sector (1,1) so a pit-free path around the edge always exists.
-const LAYOUT: Variation[][] = [
-  ["arch", "pillar", "blackout"],
-  ["red", "hole", "manila"],
-];
+interface Cell {
+  r: number;
+  c: number;
+}
+
+/** Every hazard variation appears exactly once outside the spawn/exit corners. */
+const HAZARD_POOL: readonly Variation[] = ["pillar", "hole", "blackout", "red"];
+
+/**
+ * Roll a fresh sector layout: spawn (Arch) and exit (Manila) anchor two
+ * corners of the grid — picked so they're the farthest apart, guaranteeing a
+ * long traversal — and the remaining hazards are shuffled across whatever
+ * cells are left.
+ */
+function buildLayout(rng: Rng): { layout: Variation[][]; spawnCell: Cell; exitCell: Cell } {
+  const cells: Cell[] = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) cells.push({ r, c });
+  }
+  const corners: Cell[] = [
+    { r: 0, c: 0 },
+    { r: 0, c: COLS - 1 },
+    { r: ROWS - 1, c: 0 },
+    { r: ROWS - 1, c: COLS - 1 },
+  ];
+  const manhattan = (a: Cell, b: Cell) => Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
+
+  const spawnCell = pick(rng, corners);
+  const maxDist = Math.max(...corners.map((c) => manhattan(c, spawnCell)));
+  const farCorners = corners.filter(
+    (c) => c !== spawnCell && manhattan(c, spawnCell) === maxDist,
+  );
+  const exitCell = pick(rng, farCorners);
+
+  const layout: Variation[][] = Array.from({ length: ROWS }, () =>
+    Array<Variation>(COLS).fill("pillar"),
+  );
+  layout[spawnCell.r]![spawnCell.c] = "arch";
+  layout[exitCell.r]![exitCell.c] = "manila";
+
+  const remaining = cells.filter(
+    (cell) =>
+      !(cell.r === spawnCell.r && cell.c === spawnCell.c) &&
+      !(cell.r === exitCell.r && cell.c === exitCell.c),
+  );
+  // Exactly one of each hazard when remaining.length === HAZARD_POOL.length
+  // (true for the default 3×2 grid); cycle the pool for any larger grid.
+  const pool = shuffle(
+    rng,
+    remaining.map((_, i) => HAZARD_POOL[i % HAZARD_POOL.length]!),
+  );
+  shuffle(rng, remaining).forEach((cell, i) => {
+    layout[cell.r]![cell.c] = pool[i]!;
+  });
+
+  return { layout, spawnCell, exitCell };
+}
+
+function findCell(layout: Variation[][], variation: Variation): Cell {
+  for (let r = 0; r < layout.length; r++) {
+    const c = layout[r]!.indexOf(variation);
+    if (c >= 0) return { r, c };
+  }
+  throw new Error(`layout has no "${variation}" cell`);
+}
 
 interface Room {
   x: number;
@@ -90,31 +154,41 @@ function addArches(tiles: number[], width: number, r: Room, rng: Rng): void {
   }
 }
 
-/** Regular grid of single-tile pillars — the "miles of pillars" look. */
-function addPillars(tiles: number[], width: number, r: Room): void {
-  for (let y = r.y + 2; y < r.y + r.h - 1; y += 3) {
-    for (let x = r.x + 2; x < r.x + r.w - 1; x += 3) {
+/** Regular grid of single-tile pillars — the "miles of pillars" look. Spacing
+ *  jitters 3-4 tiles per generation so the grid doesn't look stamped. */
+function addPillars(tiles: number[], width: number, r: Room, rng: Rng): void {
+  const spacing = randInt(rng, 3, 4);
+  for (let y = r.y + 2; y < r.y + r.h - 1; y += spacing) {
+    for (let x = r.x + 2; x < r.x + r.w - 1; x += spacing) {
       tiles[y * width + x] = TileKind.Wall;
     }
   }
 }
 
-/** Grid of bottomless pits with 1-tile safe lanes woven between them. */
-function addHoles(tiles: number[], width: number, r: Room): void {
+/** Grid of bottomless pits with 1-tile safe lanes woven between them. The
+ *  parity offset shifts per generation so the safe lane doesn't always fall
+ *  on the same rows/columns. */
+function addHoles(tiles: number[], width: number, r: Room, rng: Rng): void {
+  const phaseX = randInt(rng, 0, 1);
+  const phaseY = randInt(rng, 0, 1);
   for (let y = r.y + 1; y < r.y + r.h - 1; y++) {
     for (let x = r.x + 1; x < r.x + r.w - 1; x++) {
-      // Pit on even/even cells; the odd rows/cols stay as safe lanes.
-      if (x % 2 === 0 && y % 2 === 0) tiles[y * width + x] = TileKind.Hole;
+      if (x % 2 === phaseX && y % 2 === phaseY) {
+        tiles[y * width + x] = TileKind.Hole;
+      }
     }
   }
 }
 
-/** A near-closed loop: a solid core leaves only a ring corridor around it. */
-function addRedLoop(tiles: number[], width: number, r: Room): void {
-  const cx = r.x + 2;
-  const cy = r.y + 2;
-  const cw = r.w - 4;
-  const ch = r.h - 4;
+/** A near-closed loop: a solid core leaves only a ring corridor around it.
+ *  Ring width jitters 2-3 tiles for variety. */
+function addRedLoop(tiles: number[], width: number, r: Room, rng: Rng): void {
+  const ring = randInt(rng, 2, 3);
+  const cx = r.x + ring;
+  const cy = r.y + ring;
+  const cw = r.w - ring * 2;
+  const ch = r.h - ring * 2;
+  if (cw <= 0 || ch <= 0) return;
   for (let y = cy; y < cy + ch; y++) {
     for (let x = cx; x < cx + cw; x++) {
       tiles[y * width + x] = TileKind.Wall;
@@ -175,22 +249,26 @@ export function generateLevel0(input: GenerateInput): LevelData {
     }
   }
 
+  // Roll a fresh sector layout every generation — spawn/exit anchor two
+  // farthest-apart corners, the rest of the hazards are shuffled.
+  const { layout, spawnCell, exitCell } = buildLayout(rng);
+
   // Apply each sector's hazard.
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const room = rooms[r]![c]!;
-      switch (LAYOUT[r]![c]!) {
+      switch (layout[r]![c]!) {
         case "arch":
           addArches(tiles, width, room, rng);
           break;
         case "pillar":
-          addPillars(tiles, width, room);
+          addPillars(tiles, width, room, rng);
           break;
         case "hole":
-          addHoles(tiles, width, room);
+          addHoles(tiles, width, room, rng);
           break;
         case "red":
-          addRedLoop(tiles, width, room);
+          addRedLoop(tiles, width, room, rng);
           break;
         // blackout + manila carry no wall hazard — just theming.
       }
@@ -198,7 +276,9 @@ export function generateLevel0(input: GenerateInput): LevelData {
   }
 
   // Doorways: connect each sector to its right and bottom neighbour so the
-  // whole grid is reachable (multiple routes = the shifting-maze feel).
+  // whole grid is reachable (multiple routes = the shifting-maze feel). Doors
+  // are carved *after* hazards, so every doorway forcibly floors its own
+  // straight path — a route between any two sectors is always walkable.
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const a = centre(rooms[r]![c]!);
@@ -207,8 +287,8 @@ export function generateLevel0(input: GenerateInput): LevelData {
     }
   }
 
-  const spawn = centre(rooms[0]![0]!);
-  const exitRoom = rooms[ROWS - 1]![COLS - 1]!; // manila sector
+  const spawn = centre(rooms[spawnCell.r]![spawnCell.c]!);
+  const exitRoom = rooms[exitCell.r]![exitCell.c]!; // manila sector
   const exit = { x: exitRoom.x + exitRoom.w - 2, y: exitRoom.y + exitRoom.h - 2 };
 
   // A small hidden Manila safe room in the exit sector's corner.
@@ -221,9 +301,14 @@ export function generateLevel0(input: GenerateInput): LevelData {
   carveRoom(tiles, width, manila);
   carveDoor(tiles, width, centre(manila), centre(exitRoom));
 
-  // Zones: theming + the hidden Manila room.
-  const redRoom = rooms[1]![0]!;
-  const blackoutRoom = rooms[0]![2]!;
+  // Zones: theming + the hidden Manila room. Rooms are looked up from the
+  // rolled layout, not fixed grid positions, since the layout is randomized.
+  const redCell = findCell(layout, "red");
+  const blackoutCell = findCell(layout, "blackout");
+  const pillarCell = findCell(layout, "pillar");
+  const redRoom = rooms[redCell.r]![redCell.c]!;
+  const blackoutRoom = rooms[blackoutCell.r]![blackoutCell.c]!;
+  const fillerRoom = rooms[pillarCell.r]![pillarCell.c]!;
   const zones = [
     {
       id: "red-room",
@@ -259,7 +344,7 @@ export function generateLevel0(input: GenerateInput): LevelData {
   const monsters = [makeMonster("pursuer", exitRoom)];
   if (monsterCount > 1) monsters.push(makeMonster("red-lurker", redRoom));
   for (let i = monsters.length; i < monsterCount; i++) {
-    monsters.push(makeMonster(`lurker-${i}`, rooms[0]![1]!));
+    monsters.push(makeMonster(`lurker-${i}`, fillerRoom));
   }
 
   // Never bury the spawn, exit, monster spawns or their patrol corners under a

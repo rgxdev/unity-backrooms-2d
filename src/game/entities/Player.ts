@@ -14,6 +14,24 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       PLAYER.size - PLAYER.bodyInset * 2,
     );
     body.setCollideWorldBounds(true);
+
+    // Gentle squash bob so walking reads as a smooth gait rather than a
+    // sliding block — purely cosmetic, independent of the physics body.
+    scene.tweens.add({
+      targets: this,
+      scaleY: 0.94,
+      scaleX: 1.04,
+      duration: 260,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.InOut",
+    });
+  }
+
+  /** True while the arcade body has meaningful velocity. */
+  get isMoving(): boolean {
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    return body.velocity.lengthSq() > 100;
   }
 
   get tileX(): number {
