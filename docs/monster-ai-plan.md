@@ -25,8 +25,24 @@ stateDiagram-v2
 | Escaped | Freezes; the "ENTKOMMEN" overlay confirms the near-miss.           |
 
 The pursuit trigger and exit are level data (`pursuitTrigger`, `exit`), so the
-"end" is authored per level. Sprint (hold **Shift**) is how the player outruns
-the chase.
+"end" is authored (here, generated) per level. Sprint (hold **Shift**) is how
+the player outruns the chase.
+
+### Difficulty & lethality
+
+Levels are procedurally generated ([`generate.ts`](../src/game/levels/generate.ts))
+and the difficulty (`easy` / `middle` / `hard`, see `DIFFICULTY_CONFIG`) scales
+size, room/monster count and the chase:
+
+- **Easy** — never lethal. The chase is pure tension; reach the exit to escape.
+- **Middle / Hard** — the pursuit **kills**: if a monster closes within
+  `DREAD.killRadius` during Pursuit, the run ends in "GEFANGEN" and retries.
+  Hard levels are larger, more complex and the monster is faster.
+
+Progression across the official Backrooms levels (`officialLevels.ts`) is held
+in the [progress store](../src/lib/progress-store.ts): escaping a level unlocks
+and advances to the next; unlocked levels are replayable from the level-select
+menu.
 
 The reactive FSM below is retained as a tested library for a possible
 higher-difficulty mode, but is not wired into the current pacing.

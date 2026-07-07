@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { DIFFICULTIES } from "@/lib/schemas/settings";
 import { useSettings } from "./useSettings";
+
+const DIFFICULTY_LABEL: Record<(typeof DIFFICULTIES)[number], string> = {
+  easy: "Easy — no death, calm dread",
+  middle: "Middle — the monster can kill",
+  hard: "Hard — bigger, deadlier",
+};
 
 function VolumeField({
   label,
@@ -34,6 +41,24 @@ export default function SettingsPage() {
   return (
     <main className="page">
       <h1>Settings</h1>
+
+      <div className="field field--stack">
+        <label>Difficulty</label>
+        <div className="segmented" role="group" aria-label="Difficulty">
+          {DIFFICULTIES.map((d) => (
+            <button
+              key={d}
+              type="button"
+              className={`seg-btn${settings.difficulty === d ? " seg-btn--on" : ""}`}
+              aria-pressed={settings.difficulty === d}
+              onClick={() => update({ difficulty: d })}
+            >
+              {d}
+            </button>
+          ))}
+        </div>
+        <p className="hint">{DIFFICULTY_LABEL[settings.difficulty]}</p>
+      </div>
 
       <VolumeField
         label="Master Volume"

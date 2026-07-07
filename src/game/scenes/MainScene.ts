@@ -1,14 +1,20 @@
 import Phaser from "phaser";
 import {
-  COLORS,
+  DIFFICULTY_CONFIG,
   DREAD,
   SCENES,
   TEXTURES,
   TILE_SIZE,
   VISIBILITY,
 } from "@/game/config/constants";
+import type { Difficulty } from "@/lib/schemas/settings";
 import { TileKind, type LevelData, type Zone } from "@/lib/schemas/level";
-import { getLevel, FIRST_LEVEL_ID } from "@/game/levels";
+import {
+  generateLevel,
+  getOfficialLevel,
+  LAST_LEVEL_INDEX,
+  type LevelTheme,
+} from "@/game/levels";
 import { Player } from "@/game/entities/Player";
 import { Monster } from "@/game/entities/Monster";
 import { PlayerController } from "@/game/systems/PlayerController";
@@ -21,6 +27,7 @@ import { GamePhase, MonsterDirector } from "@/game/ai/MonsterDirector";
 import { DEFAULT_MONSTER_TUNING } from "@/game/ai/types";
 import type { Vec2 } from "@/game/ai/steering";
 import { getSettings } from "@/lib/settings-store";
+import { completeLevel, getProgress } from "@/lib/progress-store";
 
 const FOG_ALPHA: Record<number, number> = {
   [TileVisibility.Unseen]: 1,
@@ -41,7 +48,15 @@ export class MainScene extends Phaser.Scene {
   private phase: GamePhase = GamePhase.Ambient;
   private presenceOverlay!: Phaser.GameObjects.Rectangle;
   private lastCueAt = -Infinity;
-  private escapeShown = false;
+
+  private theme!: LevelTheme;
+  private difficulty: Difficulty = "easy";
+  private levelIndex = 0;
+  private lethal = false;
+  private pursuitSpeed = DIFFICULTY_CONFIG.easy.pursuitSpeed;
+  /** True once the level has resolved (escaped or died); freezes gameplay. */
+  private ended = false;
+  private restarted = false;
 
   private fogTiles: Phaser.GameObjects.Rectangle[] = [];
   private fogState: Int8Array = new Int8Array(0);
@@ -57,17 +72,35 @@ export class MainScene extends Phaser.Scene {
   }
 
   create(): void {
-    const level = getLevel(FIRST_LEVEL_ID);
-    if (!level) {
-      throw new Error(`Level "${FIRST_LEVEL_ID}" not found`);
-    }
-    this.level = level;
+    // Scene.restart re-runs create() on the same instance — reset run state.
+    this.resetRunState();
+
+    const settings = getSettings();
+    const progress = getProgress();
+    this.levelIndex = progress.currentLevel;
+    this.difficulty = settings.difficulty;
+    const cfg = DIFFICULTY_CONFIG[this.difficulty];
+    this.lethal = cfg.lethal;
+    this.pursuitSpeed = cfg.pursuitSpeed;
+
+    const official = getOfficialLevel(this.levelIndex);
+    this.theme = official.theme;
+    // Fresh random layout each play (deterministic per seed for testing).
+    const seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
+    this.level = generateLevel({
+      levelId: official.id,
+      levelName: official.name,
+      difficulty: this.difficulty,
+      levelIndex: this.levelIndex,
+      seed,
+    });
+    const level = this.level;
 
     const worldW = level.width * TILE_SIZE;
     const worldH = level.height * TILE_SIZE;
     this.physics.world.setBounds(0, 0, worldW, worldH);
     this.cameras.main.setBounds(0, 0, worldW, worldH);
-    this.cameras.main.setBackgroundColor(COLORS.fog);
+    this.cameras.main.setBackgroundColor(this.theme.fog);
     this.cameras.main.setZoom(2);
     this.cameras.main.roundPixels = true;
 
@@ -97,7 +130,23 @@ export class MainScene extends Phaser.Scene {
         .setDepth(1000);
     }
 
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.audio.destroy());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.audio.destroy();
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize);
+    });
+  }
+
+  private resetRunState(): void {
+    this.director.reset();
+    this.phase = GamePhase.Ambient;
+    this.monsters = [];
+    this.lastCueAt = -Infinity;
+    this.ended = false;
+    this.restarted = false;
+    this.lastTileX = -1;
+    this.lastTileY = -1;
+    this.discoveredZones.clear();
+    this.fpsText = null;
   }
 
   private isWallTile(x: number, y: number): boolean {
@@ -114,12 +163,15 @@ export class MainScene extends Phaser.Scene {
       for (let x = 0; x < width; x++) {
         const px = x * TILE_SIZE + TILE_SIZE / 2;
         const py = y * TILE_SIZE + TILE_SIZE / 2;
+        const tint = this.theme.tint;
         if (tiles[y * width + x] === TileKind.Wall) {
-          this.walls.create(px, py, TEXTURES.wall);
+          (this.walls.create(px, py, TEXTURES.wall) as Phaser.GameObjects.Image)
+            .setTint(tint);
         } else {
           const alt = (x + y) % 2 === 0;
           this.add
             .image(px, py, alt ? TEXTURES.floor : TEXTURES.floorAlt)
+            .setTint(tint)
             .setDepth(-10);
         }
       }
@@ -152,7 +204,7 @@ export class MainScene extends Phaser.Scene {
             y * TILE_SIZE + TILE_SIZE / 2,
             TILE_SIZE,
             TILE_SIZE,
-            COLORS.fog,
+            this.theme.fog,
             1,
           )
           .setDepth(500);
@@ -214,6 +266,13 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
+  private readonly handleResize = (): void => {
+    const cam = this.cameras.main;
+    if (this.presenceOverlay?.active) {
+      this.presenceOverlay.setSize(cam.width, cam.height);
+    }
+  };
+
   /** Full-screen dark pulse used to sell the monster's unseen presence. */
   private buildPresenceOverlay(): void {
     const cam = this.cameras.main;
@@ -222,9 +281,7 @@ export class MainScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(900);
-    this.scale.on(Phaser.Scale.Events.RESIZE, () => {
-      this.presenceOverlay.setSize(cam.width, cam.height);
-    });
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize);
   }
 
   private playerTile(): Vec2 {
@@ -241,7 +298,12 @@ export class MainScene extends Phaser.Scene {
 
   /** Advance the dread director and drive the monsters for the current phase. */
   private updateAi(time: number): void {
+    if (this.ended) {
+      for (const m of this.monsters) m.freeze();
+      return;
+    }
     if (this.monsters.length === 0) return;
+
     const tile = this.playerTile();
     const atExit =
       !!this.level.exit &&
@@ -263,9 +325,16 @@ export class MainScene extends Phaser.Scene {
         for (const m of this.monsters) m.tickAmbient();
         this.presenceCue(time, playerPos);
         break;
-      case GamePhase.Pursuit:
-        for (const m of this.monsters) m.pursue(playerPos, DREAD.pursuitSpeed);
+      case GamePhase.Pursuit: {
+        let nearest = Infinity;
+        for (const m of this.monsters) {
+          m.pursue(playerPos, this.pursuitSpeed);
+          nearest = Math.min(nearest, m.distanceTo(playerPos));
+        }
+        // On middle/hard the chase is lethal — it can catch and kill you.
+        if (this.lethal && nearest <= DREAD.killRadius) this.onDeath();
         break;
+      }
       case GamePhase.Escaped:
         for (const m of this.monsters) m.freeze();
         break;
@@ -279,8 +348,50 @@ export class MainScene extends Phaser.Scene {
       this.cameras.main.flash(320, 90, 0, 0);
       this.cameras.main.shake(400, 0.006);
     } else if (phase === GamePhase.Escaped) {
-      this.showEscape();
+      this.onEscape();
     }
+  }
+
+  /** Robustly restart the scene once (Space or the auto-timer, whichever first). */
+  private scheduleRestart(delayMs: number): void {
+    const go = () => {
+      if (this.restarted) return;
+      this.restarted = true;
+      this.scene.restart();
+    };
+    this.time.delayedCall(delayMs, go);
+    this.input.keyboard?.once("keydown-SPACE", go);
+  }
+
+  private onEscape(): void {
+    if (this.ended) return;
+    this.ended = true;
+    // Unlock and advance to the next official level.
+    const wasLast = this.levelIndex >= LAST_LEVEL_INDEX;
+    completeLevel(this.levelIndex);
+    const next = getOfficialLevel(this.levelIndex + 1);
+    const heading = wasLast ? "BACKROOMS BEZWUNGEN" : "ENTKOMMEN";
+    const sub = wasLast
+      ? "Du hast alle Level überlebt."
+      : `Du bist gerade so entkommen — weiter zu ${next.name}.`;
+    this.showBanner(heading, sub, "#9dffc0", 0x02040a);
+    this.scheduleRestart(2800);
+  }
+
+  private onDeath(): void {
+    if (this.ended) return;
+    this.ended = true;
+    this.player.setVelocity(0, 0);
+    this.audio.roar();
+    this.cameras.main.shake(500, 0.012);
+    this.cameras.main.flash(500, 150, 0, 0);
+    this.showBanner(
+      "GEFANGEN",
+      "Das Monster hat dich erwischt. Leertaste: erneut versuchen.",
+      "#ff6a4a",
+      0x160202,
+    );
+    this.scheduleRestart(2800);
   }
 
   /** Occasional "you can hear it" beat while the monster lurks nearby. */
@@ -304,36 +415,37 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
-  private showEscape(): void {
-    if (this.escapeShown) return;
-    this.escapeShown = true;
+  /** End-of-run overlay (escape or death). */
+  private showBanner(
+    heading: string,
+    sub: string,
+    color: string,
+    veilColor: number,
+  ): void {
     const cam = this.cameras.main;
     const veil = this.add
-      .rectangle(0, 0, cam.width, cam.height, 0x02040a, 0)
+      .rectangle(0, 0, cam.width, cam.height, veilColor, 0)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(1001);
     this.tweens.add({ targets: veil, alpha: 0.82, duration: 900 });
     this.add
-      .text(cam.width / 2, cam.height / 2, "ENTKOMMEN", {
+      .text(cam.width / 2, cam.height / 2, heading, {
         fontFamily: "monospace",
         fontSize: "40px",
-        color: "#9dffc0",
+        color,
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(1002);
     this.add
-      .text(
-        cam.width / 2,
-        cam.height / 2 + 40,
-        "Du bist gerade so entkommen.",
-        {
-          fontFamily: "monospace",
-          fontSize: "14px",
-          color: "#c9b458",
-        },
-      )
+      .text(cam.width / 2, cam.height / 2 + 42, sub, {
+        fontFamily: "monospace",
+        fontSize: "14px",
+        color: "#c9b458",
+        align: "center",
+        wordWrap: { width: cam.width - 80 },
+      })
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(1002);

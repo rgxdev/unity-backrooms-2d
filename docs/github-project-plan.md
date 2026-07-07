@@ -117,7 +117,10 @@ are checked in; the rest are Backlog/Ready.
 | 21  | Monster Chase Behavior        | Week 4    | type:feature, area:ai, priority:medium           | Done    |
 | 22  | Monster Search Behavior       | Week 4    | type:feature, area:ai, priority:medium           | Done    |
 | 23  | Player Detection System       | Week 4    | type:feature, area:ai, priority:high             | Done    |
-| 24  | Level Transition System       | Week 5    | type:feature, area:level, priority:medium        | Backlog |
+| 24  | Level Transition System       | Week 5    | type:feature, area:level, priority:medium        | Done    |
+| 32  | Procedural Level Generation   | Week 5    | type:feature, area:level, priority:high          | Done    |
+| 33  | Difficulty Modes              | Week 5    | type:feature, area:gameplay, priority:high       | Done    |
+| 34  | Official Level Progression    | Week 5    | type:feature, area:gameplay, priority:high       | Done    |
 | 25  | Audio Manager                 | Week 5    | type:feature, area:audio, priority:medium        | Ready   |
 | 26  | Save and Settings Persistence | Week 5    | type:feature, area:app, priority:high            | Ready   |
 | 27  | Performance Profiling         | Week 6    | type:refactor, area:performance, priority:medium | Backlog |

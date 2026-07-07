@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { LevelSchema, parseLevel } from "./level";
-import { LEVEL_00 } from "@/game/levels/level-00";
 
 const validRaw = {
   id: "test",
@@ -28,7 +27,8 @@ describe("LevelSchema", () => {
     expect(LevelSchema.safeParse(bad).success).toBe(false);
   });
 
-  it("accepts the bundled level-00", () => {
-    expect(LEVEL_00.tiles.length).toBe(LEVEL_00.width * LEVEL_00.height);
+  it("rejects an exit on a wall tile", () => {
+    const bad = { ...validRaw, exit: { x: 0, y: 0 } };
+    expect(LevelSchema.safeParse(bad).success).toBe(false);
   });
 });

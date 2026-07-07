@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+export const DIFFICULTIES = ["easy", "middle", "hard"] as const;
+export type Difficulty = (typeof DIFFICULTIES)[number];
+
 export const SettingsSchema = z.object({
   version: z.literal(1),
   masterVolume: z.number().min(0).max(1),
@@ -7,6 +10,8 @@ export const SettingsSchema = z.object({
   sfxVolume: z.number().min(0).max(1),
   skinId: z.string().min(1).max(64),
   showFps: z.boolean(),
+  // Added later — optional-with-default so pre-existing saves still parse.
+  difficulty: z.enum(DIFFICULTIES).default("easy"),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -18,6 +23,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sfxVolume: 0.8,
   skinId: "default",
   showFps: false,
+  difficulty: "easy",
 };
 
 export function parseSettings(input: unknown): Settings {

@@ -1,3 +1,5 @@
+import type { Difficulty } from "@/lib/schemas/settings";
+
 export const TILE_SIZE = 32;
 
 export const PLAYER = {
@@ -20,10 +22,57 @@ export const DREAD = {
   presenceRadius: 210,
   /** Min gap between ambient presence cues (ms). */
   cueCooldownMs: 4500,
-  /** Chase speed: above the walk (140), below the sprint (215) — sprint to
-   *  escape, and it stays right on your heels. */
-  pursuitSpeed: 152,
+  /** World distance at which a pursuing monster grabs the player (lethal on
+   *  middle/hard). */
+  killRadius: 17,
 } as const;
+
+/**
+ * Per-difficulty level-generation and threat tuning. Higher difficulty =
+ * larger, more complex levels, more monsters, and — crucially — a lethal
+ * chase. Easy is never lethal. Sizes grow with the level index too, so later
+ * Backrooms levels are longer and harder.
+ */
+export interface DifficultyConfig {
+  /** Can the monster catch, attack and kill the player? */
+  lethal: boolean;
+  /** Chase speed (world units/sec). Player sprint is 215. */
+  pursuitSpeed: number;
+  base: {
+    width: number;
+    height: number;
+    rooms: number;
+    monsters: number;
+    /** Extra (loop-forming) corridors beyond the spanning path. */
+    extraLinks: number;
+  };
+  /** Added per level index (0-based). */
+  perLevel: { width: number; height: number; rooms: number; monsters: number };
+}
+
+export const DIFFICULTY_CONFIG: Record<Difficulty, DifficultyConfig> = {
+  easy: {
+    lethal: false,
+    pursuitSpeed: 150,
+    base: { width: 34, height: 26, rooms: 6, monsters: 1, extraLinks: 1 },
+    perLevel: { width: 3, height: 2, rooms: 1, monsters: 0 },
+  },
+  middle: {
+    lethal: true,
+    pursuitSpeed: 160,
+    base: { width: 46, height: 34, rooms: 9, monsters: 2, extraLinks: 2 },
+    perLevel: { width: 4, height: 3, rooms: 1, monsters: 1 },
+  },
+  hard: {
+    lethal: true,
+    pursuitSpeed: 172,
+    base: { width: 58, height: 42, rooms: 12, monsters: 3, extraLinks: 3 },
+    perLevel: { width: 5, height: 3, rooms: 2, monsters: 1 },
+  },
+} as const;
+
+/** Never generate more monsters than this, whatever the difficulty/index. */
+export const MAX_MONSTERS = 8;
 
 export const COLORS = {
   // Woven carpet floor — warm mustard with visible thread weave
