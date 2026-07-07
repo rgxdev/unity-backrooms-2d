@@ -1,3 +1,5 @@
+import type { LevelStyle } from "@/game/config/constants";
+
 /**
  * The official Backrooms levels the player progresses through. Each level keeps
  * a stable identity (number, name, colour theme) while its actual layout is
@@ -8,6 +10,9 @@ export interface LevelTheme {
   tint: number;
   /** Fog / background colour. */
   fog: number;
+  /** Which baked asset set (wallpaper lobby vs bare-concrete warehouse) this
+   *  level's tiles are drawn from — see {@link LevelStyle}. */
+  style: LevelStyle;
 }
 
 export interface OfficialLevel {
@@ -26,35 +31,35 @@ export const OFFICIAL_LEVELS: readonly OfficialLevel[] = [
     blurb:
       "Mono-yellow rooms: pillar halls, pitch-black pits, sticky red rooms — " +
       "find the flickering wall and throw yourself into Level 1.",
-    theme: { tint: 0xffffff, fog: 0x05050a },
+    theme: { tint: 0xffffff, fog: 0x05050a, style: "lobby" },
   },
   {
     index: 1,
     id: "level-1",
     name: "Level 1 — Habitable Zone",
-    blurb: "Damp concrete corridors. Something else walks here too.",
-    theme: { tint: 0xb8bec6, fog: 0x080a0d },
+    blurb: "A warehouse of bare concrete and exposed rebar. Something else walks here too.",
+    theme: { tint: 0xffffff, fog: 0x080a0d, style: "habitable" },
   },
   {
     index: 2,
     id: "level-2",
     name: "Level 2 — Pipe Dreams",
-    blurb: "Miles of pipework, hissing steam and total dark.",
-    theme: { tint: 0x8fb2a1, fog: 0x05100c },
+    blurb: "Rusted pipes line a scalding maintenance tunnel — total dark, and the mould smell never leaves.",
+    theme: { tint: 0xffffff, fog: 0x05100c, style: "pipedreams" },
   },
   {
     index: 3,
     id: "level-3",
     name: "Level 3 — Poolrooms",
-    blurb: "Warm water, tiled halls, no exit in sight.",
-    theme: { tint: 0x9fd0e0, fog: 0x061014 },
+    blurb: "Warm, waist-deep water and endless pristine white tile. No exit in sight.",
+    theme: { tint: 0xffffff, fog: 0x061014, style: "poolrooms" },
   },
   {
     index: 4,
     id: "level-4",
     name: "Level 4 — Run For Your Life",
-    blurb: "It knows you are here. Do not stop.",
-    theme: { tint: 0xd08a6a, fog: 0x0c0604 },
+    blurb: "Scorched concrete and hazard tape. It knows you are here. Do not stop.",
+    theme: { tint: 0xffffff, fog: 0x0c0604, style: "hazard" },
   },
 ];
 

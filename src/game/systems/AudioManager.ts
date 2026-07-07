@@ -99,6 +99,29 @@ export class AudioManager {
     this.tone(90, 0.4, 0.5, "sawtooth");
   }
 
+  /** Bright ascending two-note chime — picking up a bottle of Almond Water. */
+  chime(): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    for (const [freq, delay] of [
+      [660, 0],
+      [990, 0.08],
+    ] as const) {
+      const gain = ctx.createGain();
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      const start = ctx.currentTime + delay;
+      osc.frequency.setValueAtTime(freq, start);
+      const peak = Math.max(0.0001, 0.35 * this.masterVolume);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(peak, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.37);
+    }
+  }
+
   destroy(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
