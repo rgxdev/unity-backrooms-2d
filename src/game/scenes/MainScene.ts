@@ -1169,7 +1169,7 @@ export class MainScene extends Phaser.Scene {
       // beam right along with everything else, so at high fear (a monster
       // close by) it was crushing the beam dark exactly when you'd want it
       // most. Damp the fear-driven darkening while the flashlight is on.
-      const vignetteFear = this.flashlightOn ? fear * 0.45 : fear;
+      const vignetteFear = this.flashlightOn ? fear * 0.12 : fear;
       v.strength =
         FEAR.vignetteMinStrength +
         vignetteFear * (FEAR.vignetteMaxStrength - FEAR.vignetteMinStrength);
