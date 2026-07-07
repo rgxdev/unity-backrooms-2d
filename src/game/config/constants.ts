@@ -201,6 +201,23 @@ export const BLACKOUT_EVENT = {
 export const MAX_MONSTERS = 8;
 
 /**
+ * The Flashlight: a single rare pickup, findable only in the first level
+ * (see MainScene.buildFlashlightPickup) and kept for the rest of the game
+ * session once found. Equip/use it from hotbar slot 1; it aims a beam at the
+ * cursor that widens the fog-of-war reveal in that direction.
+ */
+export const FLASHLIGHT = {
+  /** World-unit pickup radius for the F interact prompt. */
+  pickupRadius: 26,
+  /** Half-angle of the light cone, in radians. */
+  coneHalfAngleRad: (26 * Math.PI) / 180,
+  /** How far (in tiles) the beam reveals. */
+  coneRadiusTiles: 11,
+  /** Throttle (ms) between recomputing the beam's revealed tiles. */
+  recalcMs: 70,
+} as const;
+
+/**
  * Visual identity per the documented Backrooms levels — every official level
  * gets its own wall/floor material and detailing, sourced from the wiki
  * entry for that level:
@@ -517,6 +534,7 @@ export const TEXTURES = {
   exit: (style: LevelStyle) => `tex-exit-${style}`,
   prop: (kind: PropKind) => `tex-prop-${kind}`,
   almondWater: "tex-almond-water",
+  flashlight: "tex-flashlight-item",
   monster: "tex-monster",
   monsterWalk: "tex-monster-walk",
   monsterBack: "tex-monster-back",

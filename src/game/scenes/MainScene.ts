@@ -8,6 +8,7 @@ import {
   DREAD,
   EXIT_DREAD,
   FEAR,
+  FLASHLIGHT,
   FLOOR_VARIANTS,
   JUMPSCARE,
   MONSTER_TINT,
@@ -151,6 +152,26 @@ export class MainScene extends Phaser.Scene {
   private visionBoosted = false;
   private visionBoostUntil = 0;
 
+  /**
+   * The Flashlight (see FLASHLIGHT constants): a single rare pickup, only
+   * ever spawned in the first level, kept for the rest of the game session
+   * once found (persisted on the scene registry so it survives a
+   * scene.restart()). Equip/use it from hotbar slot 1; aims a beam at the
+   * cursor that widens the fog-of-war reveal in that direction.
+   */
+  private hasFlashlight = false;
+  private flashlightOn = false;
+  private flashlightPickup: Phaser.GameObjects.Image | null = null;
+  private flashlightPrompt: Phaser.GameObjects.Text | null = null;
+  private flashlightGraphics!: Phaser.GameObjects.Graphics;
+  private flashlightNextRecalcAt = 0;
+  private interactKey!: Phaser.Input.Keyboard.Key;
+  private flashlightToggleKey!: Phaser.Input.Keyboard.Key;
+  /** Bottom-left hotbar slot showing the equipped flashlight. */
+  private hotbarBg!: Phaser.GameObjects.Rectangle;
+  private hotbarIcon!: Phaser.GameObjects.Image;
+  private hotbarLabel!: Phaser.GameObjects.Text;
+
   constructor() {
     super(SCENES.main);
   }
@@ -172,6 +193,13 @@ export class MainScene extends Phaser.Scene {
     const cfg = DIFFICULTY_CONFIG[this.difficulty];
     this.lethal = cfg.lethal;
     this.pursuitSpeed = cfg.pursuitSpeed;
+
+    // Once found, the Flashlight stays equipped for the rest of the game
+    // session — the registry lives on the Game, not the Scene, so it
+    // survives scene.restart() across levels (and death/fall retries).
+    this.hasFlashlight = this.registry.get("hasFlashlight") === true;
+    this.flashlightOn =
+      this.hasFlashlight && this.registry.get("flashlightOn") === true;
 
     const official = getOfficialLevel(this.levelIndex);
     this.theme = official.theme;
@@ -203,6 +231,7 @@ export class MainScene extends Phaser.Scene {
     this.buildZoneThemeMasks();
     this.buildTiles();
     this.buildDecorations();
+    this.buildFlashlightPickup();
     this.buildHiddenZoneMask();
     this.buildFog();
     this.spawnPlayer();
@@ -216,6 +245,7 @@ export class MainScene extends Phaser.Scene {
     this.spawnStalker();
     this.buildExit();
     this.buildPresenceOverlay();
+    this.buildFlashlightSystems();
     this.setupFilters();
     this.audio = new AudioManager(this.sound);
     this.audio.startHum();
@@ -265,6 +295,9 @@ export class MainScene extends Phaser.Scene {
     this.almondBottles = [];
     this.visionBoosted = false;
     this.visionBoostUntil = 0;
+    this.flashlightPickup = null;
+    this.flashlightPrompt = null;
+    this.flashlightNextRecalcAt = 0;
   }
 
   private isWallTile(x: number, y: number): boolean {
@@ -466,6 +499,202 @@ export class MainScene extends Phaser.Scene {
       this.visibility.update(tile.x, tile.y, (x, y) => this.isWallTile(x, y));
       this.refreshFog();
     }
+  }
+
+  /**
+   * Places the single Flashlight pickup at a random walkable floor tile,
+   * tucked away from the spawn — but only in the first level, and only if
+   * it hasn't already been found this game session (see {@link hasFlashlight}).
+   */
+  private buildFlashlightPickup(): void {
+    if (this.levelIndex !== 0 || this.hasFlashlight) return;
+    const { width, height, tiles, spawn, exit } = this.level;
+    const candidates: Vec2[] = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (tiles[y * width + x] !== TileKind.Floor) continue;
+        if (x === spawn.x && y === spawn.y) continue;
+        if (exit && x === exit.x && y === exit.y) continue;
+        const dx = x - spawn.x;
+        const dy = y - spawn.y;
+        if (dx * dx + dy * dy < 16) continue; // tucked away from the spawn
+        candidates.push({ x, y });
+      }
+    }
+    if (candidates.length === 0) return;
+    const tile = candidates[Phaser.Math.Between(0, candidates.length - 1)]!;
+    const c = this.centreOf(tile.x, tile.y);
+
+    const item = this.add.image(c.x, c.y, TEXTURES.flashlight).setDepth(-6);
+    this.tweens.add({
+      targets: item,
+      y: c.y - 3,
+      duration: 1000,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.InOut",
+    });
+    this.flashlightPickup = item;
+
+    this.flashlightPrompt = this.add
+      .text(c.x, c.y - 20, "[F]", {
+        fontFamily: "monospace",
+        fontSize: "11px",
+        color: "#e4c94a",
+      })
+      .setOrigin(0.5)
+      .setDepth(120)
+      .setVisible(false);
+  }
+
+  /** Interact/hotbar input, the beam graphic, and the bottom-left hotbar UI. */
+  private buildFlashlightSystems(): void {
+    const keyboard = this.input.keyboard!;
+    this.interactKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F);
+    this.flashlightToggleKey = keyboard.addKey(
+      Phaser.Input.Keyboard.KeyCodes.ONE,
+    );
+
+    this.flashlightGraphics = this.add.graphics().setDepth(550);
+    this.flashlightGraphics.setBlendMode(Phaser.BlendModes.ADD);
+
+    this.buildHotbar();
+    if (this.hasFlashlight) {
+      this.hotbarBg.setVisible(true);
+      this.hotbarIcon.setVisible(true);
+      this.hotbarLabel.setVisible(true);
+      this.applyFlashlightVisual(this.flashlightOn);
+    }
+  }
+
+  /** Bottom-left hotbar slot 1 — hidden until the Flashlight is found. */
+  private buildHotbar(): void {
+    const cam = this.cameras.main;
+    const x = 14;
+    const y = cam.height - 40;
+    this.hotbarBg = this.add
+      .rectangle(x, y, 34, 34, 0x0a0a12, 0.78)
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, 0x4a4530, 0.9)
+      .setScrollFactor(0)
+      .setDepth(950)
+      .setVisible(false);
+    this.hotbarIcon = this.add
+      .image(x + 17, y + 15, TEXTURES.flashlight)
+      .setScrollFactor(0)
+      .setDepth(951)
+      .setScale(0.85)
+      .setAlpha(0.5)
+      .setVisible(false);
+    this.hotbarLabel = this.add
+      .text(x + 3, y + 22, "1", {
+        fontFamily: "monospace",
+        fontSize: "10px",
+        color: "#c9b458",
+      })
+      .setScrollFactor(0)
+      .setDepth(951)
+      .setVisible(false);
+  }
+
+  /** Icon brightness / border glow reflecting whether the beam is on. */
+  private applyFlashlightVisual(on: boolean): void {
+    this.hotbarIcon.setAlpha(on ? 1 : 0.5);
+    this.hotbarBg.setStrokeStyle(1, on ? 0xe4c94a : 0x4a4530, on ? 1 : 0.9);
+  }
+
+  private setFlashlightOn(on: boolean): void {
+    this.flashlightOn = on;
+    this.registry.set("flashlightOn", on);
+    this.applyFlashlightVisual(on);
+    if (!on) {
+      this.flashlightGraphics.clear();
+      this.visibility.clearCone();
+      this.refreshFog();
+    }
+  }
+
+  /** Picks up the Flashlight — permanent for the rest of the session. */
+  private collectFlashlight(): void {
+    this.hasFlashlight = true;
+    this.registry.set("hasFlashlight", true);
+    this.flashlightPickup?.destroy();
+    this.flashlightPickup = null;
+    this.flashlightPrompt?.destroy();
+    this.flashlightPrompt = null;
+
+    this.audio.chime();
+    this.cameras.main.flash(180, 255, 235, 180);
+
+    this.hotbarBg.setVisible(true);
+    this.hotbarIcon.setVisible(true);
+    this.hotbarLabel.setVisible(true);
+    this.applyFlashlightVisual(this.flashlightOn);
+  }
+
+  /** The general-purpose "F" interact prompt — currently only the Flashlight
+   *  pickup uses it, but it's keyed off proximity + JustDown like any future
+   *  interactable would be. */
+  private updateFlashlightPickup(): void {
+    const pickup = this.flashlightPickup;
+    if (!pickup) return;
+    const dx = pickup.x - this.player.x;
+    const dy = pickup.y - this.player.y;
+    const inRange = dx * dx + dy * dy <= FLASHLIGHT.pickupRadius ** 2;
+    this.flashlightPrompt?.setVisible(inRange);
+    if (inRange && Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+      this.collectFlashlight();
+    }
+  }
+
+  private updateFlashlightToggle(): void {
+    if (!this.hasFlashlight) return;
+    if (Phaser.Input.Keyboard.JustDown(this.flashlightToggleKey)) {
+      this.setFlashlightOn(!this.flashlightOn);
+    }
+  }
+
+  /** Aims the beam at the cursor. The cosmetic glow redraws every frame so
+   *  it tracks the cursor smoothly; the fog-of-war reveal (VisibilitySystem
+   *  .updateCone) is throttled — see FLASHLIGHT.recalcMs — since it's a
+   *  full grid pass and doesn't need to keep up with mouse-move framerate. */
+  private updateFlashlightBeam(time: number): void {
+    if (!this.flashlightOn) return;
+
+    const pointer = this.input.activePointer;
+    const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const angle = Math.atan2(world.y - this.player.y, world.x - this.player.x);
+
+    const radius = FLASHLIGHT.coneRadiusTiles * TILE_SIZE;
+    const g = this.flashlightGraphics;
+    g.clear();
+    g.fillStyle(0xfff0c0, 0.16);
+    g.beginPath();
+    g.moveTo(this.player.x, this.player.y);
+    g.arc(
+      this.player.x,
+      this.player.y,
+      radius,
+      angle - FLASHLIGHT.coneHalfAngleRad,
+      angle + FLASHLIGHT.coneHalfAngleRad,
+      false,
+    );
+    g.closePath();
+    g.fillPath();
+
+    if (time < this.flashlightNextRecalcAt) return;
+    this.flashlightNextRecalcAt = time + FLASHLIGHT.recalcMs;
+
+    const tile = this.playerTile();
+    this.visibility.updateCone(
+      tile.x,
+      tile.y,
+      angle,
+      FLASHLIGHT.coneHalfAngleRad,
+      FLASHLIGHT.coneRadiusTiles,
+      (x, y) => this.isWallTile(x, y),
+    );
+    this.refreshFog();
   }
 
   private buildHiddenZoneMask(): void {
@@ -727,6 +956,13 @@ export class MainScene extends Phaser.Scene {
     }
     if (this.anomalyOverlay?.active) {
       this.anomalyOverlay.setSize(cam.width, cam.height);
+    }
+    if (this.hotbarBg?.active) {
+      const x = 14;
+      const y = cam.height - 40;
+      this.hotbarBg.setPosition(x, y);
+      this.hotbarIcon.setPosition(x + 17, y + 15);
+      this.hotbarLabel.setPosition(x + 3, y + 22);
     }
   };
 
@@ -1516,6 +1752,9 @@ export class MainScene extends Phaser.Scene {
     if (!this.ended && this.isHoleTile(tileX, tileY)) this.onFall();
 
     if (!this.ended) this.updateAlmondWater(time);
+    if (!this.ended) this.updateFlashlightPickup();
+    if (!this.ended) this.updateFlashlightToggle();
+    if (!this.ended) this.updateFlashlightBeam(time);
 
     this.updateAi(time, delta);
 

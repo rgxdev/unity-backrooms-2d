@@ -17,7 +17,11 @@ import {
   type PropKind,
   type StyleColorSet,
 } from "@/game/config/constants";
-import { SKINS, type PlayerPalette } from "@/game/skins/skinCatalog";
+import {
+  SKINS,
+  type AccessoryKind,
+  type PlayerPalette,
+} from "@/game/skins/skinCatalog";
 import { hash01 } from "@/game/util/hash";
 
 type Facing = "front" | "back";
@@ -109,6 +113,7 @@ export class PreloadScene extends Phaser.Scene {
       }
     }
     tasks.push(() => this.makeAlmondWater(TEXTURES.almondWater));
+    tasks.push(() => this.makeFlashlight(TEXTURES.flashlight));
     for (const skin of SKINS) {
       tasks.push(
         () =>
@@ -117,6 +122,7 @@ export class PreloadScene extends Phaser.Scene {
             "front",
             false,
             skin.palette,
+            skin.accessory,
           ),
         () =>
           this.makePlayer(
@@ -124,6 +130,7 @@ export class PreloadScene extends Phaser.Scene {
             "front",
             true,
             skin.palette,
+            skin.accessory,
           ),
         () =>
           this.makePlayer(
@@ -131,6 +138,7 @@ export class PreloadScene extends Phaser.Scene {
             "back",
             false,
             skin.palette,
+            skin.accessory,
           ),
         () =>
           this.makePlayer(
@@ -138,6 +146,7 @@ export class PreloadScene extends Phaser.Scene {
             "back",
             true,
             skin.palette,
+            skin.accessory,
           ),
       );
     }
@@ -680,6 +689,39 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   /**
+   * The Flashlight pickup — a small handheld torch, its lens glowing bright
+   * against every level's palette so the single spawn always reads as
+   * "notice me" (same "rare pickup" language as {@link makeAlmondWater}).
+   * Reused at hotbar scale once equipped, so world icon and UI icon always
+   * match exactly.
+   */
+  private makeFlashlight(key: string): void {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    const t = TILE_SIZE;
+
+    g.fillStyle(COLORS.almondGlow, 0.22);
+    g.fillEllipse(t / 2, t / 2, 22, 22);
+    g.fillStyle(COLORS.shadow, 0.3);
+    g.fillEllipse(t / 2, t - 7, 10, 3);
+
+    // Barrel, grip toward the bottom.
+    this.rr(g, COLORS.propMetal, 11, 9, 9, 17, 1);
+    this.px(g, COLORS.propMetalDark, 11, 9, 9, 2, 0.7);
+    this.px(g, COLORS.propMetalDark, 11, 22, 9, 2, 0.6);
+    this.px(g, COLORS.propMetal, 12, 12, 2, 10, 0.5);
+    this.px(g, COLORS.propMetalDark, 13, 15, 5, 5, 0.3);
+
+    // Lens, bright with a soft outer bloom.
+    g.fillStyle(0xffe27a, 0.55);
+    g.fillEllipse(15.5, 8, 12, 9);
+    g.fillStyle(0xfff6cf, 1);
+    g.fillEllipse(15.5, 8, 8, 6);
+
+    g.generateTexture(key, t, t);
+    g.destroy();
+  }
+
+  /**
    * Top-down character sprite: rounded silhouette, hair, shaded shirt/legs
    * with soft multi-tone shading and a dark keyline — a readable little
    * person with a gentle rounded shape instead of a two-tone square.
@@ -693,6 +735,7 @@ export class PreloadScene extends Phaser.Scene {
     facing: Facing,
     stride: boolean,
     palette: PlayerPalette,
+    accessory: AccessoryKind,
   ): void {
     const s = PLAYER.size;
     const g = this.make.graphics({ x: 0, y: 0 }, false);
@@ -723,6 +766,8 @@ export class PreloadScene extends Phaser.Scene {
       this.px(g, COLORS.playerOutline, s / 2 - 0.5, 5, 1, 4, 0.5);
     }
 
+    this.drawAccessory(g, s, facing, palette, accessory);
+
     // Shirt torso + arms, shaded on the right, highlighted on the left.
     this.rr(g, palette.shirt, 2, 9, s - 4, 5, 1);
     this.px(g, palette.shirtHi, 3, 9, 2, 4, 0.6);
@@ -745,6 +790,49 @@ export class PreloadScene extends Phaser.Scene {
 
     g.generateTexture(key, s, s);
     g.destroy();
+  }
+
+  /**
+   * Skin-specific silhouette add-on drawn over the head/face, in the
+   * gear's own shade — so each skin is unmistakably its own texture at a
+   * glance, not just a shirt-colour swap on an otherwise identical sprite.
+   * Face-level accessories (goggles/mask/bandana) only apply facing the
+   * camera; the back of the head has no face for them to sit on.
+   */
+  private drawAccessory(
+    g: Phaser.GameObjects.Graphics,
+    s: number,
+    facing: Facing,
+    palette: PlayerPalette,
+    accessory: AccessoryKind,
+  ): void {
+    switch (accessory) {
+      case "none":
+        return;
+      case "cap":
+        // Flat brim across the forehead, over the hair.
+        this.px(g, palette.shirtShade, 3, 2, s - 6, 1, 1);
+        this.px(g, palette.shirtShade, 2, 3, s - 4, 1, 0.9);
+        return;
+      case "hood":
+        // Fabric framing the hair down both sides and across the top.
+        this.px(g, palette.shirtShade, 2, 1, 1, 6, 0.9);
+        this.px(g, palette.shirtShade, s - 3, 1, 1, 6, 0.9);
+        this.px(g, palette.shirtShade, 3, 0, s - 6, 1, 0.9);
+        return;
+      case "goggles":
+        if (facing !== "front") return;
+        this.px(g, palette.shirtHi, 4, 6, s - 8, 2, 0.9);
+        return;
+      case "mask":
+        if (facing !== "front") return;
+        this.px(g, palette.shirtShade, 4, 7, s - 8, 3, 0.9);
+        return;
+      case "bandana":
+        if (facing !== "front") return;
+        this.px(g, palette.shirtShade, 4, 8, s - 8, 2, 0.95);
+        return;
+    }
   }
 
   /**

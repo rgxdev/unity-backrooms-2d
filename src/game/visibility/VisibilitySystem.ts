@@ -17,12 +17,21 @@ export class VisibilitySystem {
   private currentRadius: number;
 
   private readonly state: Uint8Array;
+  /** 1 where the last update() call's ambient circle reveals that tile —
+   *  lets updateCone() know which tiles it must never demote out from under
+   *  the ambient reveal. */
+  private readonly ambientMask: Uint8Array;
+  /** Tile indices the last updateCone() call marked Visible, so the next
+   *  call (or clearCone()) can demote whichever of them fall outside the
+   *  fresh beam. */
+  private coneTiles: number[] = [];
 
   constructor(width: number, height: number, radius: number) {
     this.width = width;
     this.height = height;
     this.currentRadius = radius;
     this.state = new Uint8Array(width * height);
+    this.ambientMask = new Uint8Array(width * height);
   }
 
   get radius(): number {
@@ -58,6 +67,7 @@ export class VisibilitySystem {
 
   update(originX: number, originY: number, isWall: IsWallFn): void {
     this.demote();
+    this.ambientMask.fill(0);
     const r = this.radius;
     const r2 = r * r;
     const minX = Math.max(0, originX - r);
@@ -71,11 +81,67 @@ export class VisibilitySystem {
         const dy = ty - originY;
         if (dx * dx + dy * dy > r2) continue;
         if (this.hasLineOfSight(originX, originY, tx, ty, isWall)) {
-          this.state[this.index(tx, ty)] = TileVisibility.Visible;
+          const idx = this.index(tx, ty);
+          this.state[idx] = TileVisibility.Visible;
+          this.ambientMask[idx] = 1;
         }
       }
     }
-    this.state[this.index(originX, originY)] = TileVisibility.Visible;
+    const originIdx = this.index(originX, originY);
+    this.state[originIdx] = TileVisibility.Visible;
+    this.ambientMask[originIdx] = 1;
+  }
+
+  /**
+   * Reveal tiles inside a directional cone (the flashlight beam), additive on
+   * top of whatever the last update() call's ambient circle already covers.
+   * Idempotent per call — safe to call every time the beam direction changes.
+   * Tiles the beam sweeps away from fall back to Discovered unless the
+   * ambient circle still covers them; call clearCone() when the beam turns off.
+   */
+  updateCone(
+    originX: number,
+    originY: number,
+    angleRad: number,
+    halfAngleRad: number,
+    radius: number,
+    isWall: IsWallFn,
+  ): void {
+    this.clearCone();
+    const r2 = radius * radius;
+    const minX = Math.max(0, originX - radius);
+    const maxX = Math.min(this.width - 1, originX + radius);
+    const minY = Math.max(0, originY - radius);
+    const maxY = Math.min(this.height - 1, originY + radius);
+
+    for (let ty = minY; ty <= maxY; ty++) {
+      for (let tx = minX; tx <= maxX; tx++) {
+        const dx = tx - originX;
+        const dy = ty - originY;
+        if (dx === 0 && dy === 0) continue;
+        if (dx * dx + dy * dy > r2) continue;
+        const idx = this.index(tx, ty);
+        if (this.ambientMask[idx]) continue;
+        let diff = Math.abs(Math.atan2(dy, dx) - angleRad);
+        if (diff > Math.PI) diff = Math.PI * 2 - diff;
+        if (diff > halfAngleRad) continue;
+        if (!this.hasLineOfSight(originX, originY, tx, ty, isWall)) continue;
+        this.state[idx] = TileVisibility.Visible;
+        this.coneTiles.push(idx);
+      }
+    }
+  }
+
+  /** Demotes whatever the last updateCone() call revealed back to Discovered,
+   *  unless the ambient circle from the last update() call also covers it. */
+  clearCone(): void {
+    for (const idx of this.coneTiles) {
+      if (this.ambientMask[idx]) continue;
+      if (this.state[idx] === TileVisibility.Visible) {
+        this.state[idx] = TileVisibility.Discovered;
+      }
+    }
+    this.coneTiles = [];
   }
 
   /** Bresenham walk; a wall blocks the tiles behind it but is itself visible. */
