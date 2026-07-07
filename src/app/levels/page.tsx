@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { OFFICIAL_LEVELS } from "@/game/levels/officialLevels";
+import { playUiClick } from "@/lib/ui-sound";
 import { useProgress } from "./useProgress";
 
 export default function LevelsPage() {
@@ -10,6 +11,7 @@ export default function LevelsPage() {
   const { progress, select } = useProgress();
 
   function play(index: number) {
+    playUiClick();
     select(index);
     router.push("/game");
   }
@@ -46,7 +48,7 @@ export default function LevelsPage() {
         })}
       </div>
 
-      <Link href="/" className="back-link">
+      <Link href="/" className="back-link" onClick={playUiClick}>
         &larr; Back to menu
       </Link>
     </main>

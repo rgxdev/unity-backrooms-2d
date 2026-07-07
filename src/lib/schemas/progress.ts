@@ -6,6 +6,9 @@ export const ProgressSchema = z.object({
   currentLevel: z.number().int().nonnegative(),
   /** Level indices unlocked for replay from the level-select menu. */
   unlocked: z.array(z.number().int().nonnegative()),
+  // Added later — optional-with-default so pre-existing saves still parse.
+  /** Skin ids unlocked by escaping their reward level; "default" always included. */
+  unlockedSkins: z.array(z.string().min(1).max(64)).default(["default"]),
 });
 
 export type Progress = z.infer<typeof ProgressSchema>;
@@ -14,6 +17,7 @@ export const DEFAULT_PROGRESS: Progress = {
   version: 1,
   currentLevel: 0,
   unlocked: [0],
+  unlockedSkins: ["default"],
 };
 
 export function parseProgress(input: unknown): Progress {

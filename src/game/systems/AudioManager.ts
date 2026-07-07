@@ -13,6 +13,7 @@ export class AudioManager {
   private masterVolume = 1;
   private heartbeatArmed = false;
   private heartbeatNextAt = 0;
+  private humNodes: { osc: OscillatorNode; gain: GainNode } | null = null;
 
   constructor(private readonly sound: Phaser.Sound.BaseSoundManager) {
     this.apply(getSettings());
@@ -23,6 +24,13 @@ export class AudioManager {
     this.masterVolume = settings.masterVolume;
     this.sound.volume = settings.masterVolume;
     this.sound.mute = settings.masterVolume <= 0;
+    if (this.humNodes) {
+      this.humNodes.gain.gain.setTargetAtTime(
+        this.humTargetGain(),
+        this.context?.currentTime ?? 0,
+        0.3,
+      );
+    }
   }
 
   private get context(): AudioContext | null {
@@ -152,15 +160,138 @@ export class AudioManager {
     this.tone(90, 0.4, 0.5, "sawtooth");
   }
 
-  /** Barely-there murmur in the dark — no source, no direction you can pin
-   *  down. Pure unease; never tied to a visible threat. */
-  whisper(intensity = 0.2): void {
+  private humTargetGain(): number {
+    return Math.max(0.0001, 0.05 * this.masterVolume);
+  }
+
+  /**
+   * The fluorescent-light drone that never stops — Backrooms signature
+   * ambience. Starts a looping low-frequency oscillator; idempotent, so it's
+   * safe to call once per scene without tracking start state elsewhere.
+   */
+  startHum(): void {
+    if (this.humNodes) return;
+    const ctx = this.context;
+    if (!ctx) return;
+    const gain = ctx.createGain();
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(60, ctx.currentTime);
+    gain.gain.setValueAtTime(this.humTargetGain(), ctx.currentTime);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    this.humNodes = { osc, gain };
+  }
+
+  stopHum(): void {
+    if (!this.humNodes) return;
+    const { osc, gain } = this.humNodes;
+    const ctx = this.context;
+    if (ctx) {
+      gain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.15);
+      osc.stop(ctx.currentTime + 0.6);
+    } else {
+      osc.stop();
+    }
+    this.humNodes = null;
+  }
+
+  /** Electrical stutter — a light flickering overhead. */
+  flicker(): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    const gain = ctx.createGain();
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(220, ctx.currentTime);
+    const peak = Math.max(0.0001, 0.18 * this.masterVolume);
+    // Three short crackling pulses instead of one smooth tone.
+    for (let i = 0; i < 3; i++) {
+      const t = ctx.currentTime + i * 0.09;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(peak, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    }
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+  }
+
+  /** A low, garbled murmur just at the edge of hearing — no one there.
+   *  ProcessDirector's ambient anomaly cue (no direction; always distant). */
+  whisper(): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(420, ctx.currentTime);
+    filter.Q.value = 4;
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(140, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(110, ctx.currentTime + 1.2);
+    const peak = Math.max(0.0001, 0.12 * this.masterVolume);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + 0.3);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.3);
+    osc.connect(filter).connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 1.35);
+  }
+
+  /** Distant, heavy thud — something moved somewhere out of sight. */
+  thud(): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    const gain = ctx.createGain();
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(55, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(28, ctx.currentTime + 0.4);
+    const peak = Math.max(0.0001, 0.3 * this.masterVolume);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.55);
+  }
+
+  /** Bright ascending three-note chime — reward feedback for a skin unlock,
+   *  distinct from {@link chime}'s two-note Almond Water pickup jingle. */
+  skinUnlockChime(): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    const notes = [660, 880, 1100];
+    notes.forEach((freq, i) => {
+      const t = ctx.currentTime + i * 0.09;
+      const gain = ctx.createGain();
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, t);
+      const peak = Math.max(0.0001, 0.22 * this.masterVolume);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(peak, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.32);
+    });
+  }
+
+  /** Barely-there murmur in the dark, distinct from {@link whisper} — a
+   *  directional cue tied to a specific unseen encounter rather than
+   *  ProcessDirector's undirected ambient anomaly. Pure unease; never tied
+   *  to a visible threat. */
+  murmur(intensity = 0.2): void {
     const pan = Math.random() * 2 - 1;
     this.noiseBurst(0.9, intensity * 0.5, 700, pan);
     this.tone(190, 0.8, intensity * 0.4, "sine", pan);
   }
 
-  /** The power gutters — a dry electrical crackle under the blackout flicker. */
+  /** The power gutters — a dry electrical crackle under the blackout flicker,
+   *  distinct from {@link flicker}'s light-stutter crackle. */
   staticBurst(intensity = 0.35): void {
     this.noiseBurst(0.22, intensity, 2600);
     this.tone(60, 0.25, intensity * 0.5, "sawtooth");
@@ -236,6 +367,7 @@ export class AudioManager {
   }
 
   destroy(): void {
+    this.stopHum();
     this.unsubscribe?.();
     this.unsubscribe = null;
   }

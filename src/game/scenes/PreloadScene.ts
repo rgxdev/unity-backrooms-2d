@@ -5,6 +5,7 @@ import {
   LEVEL_STYLES,
   MONSTER,
   PLAYER,
+  playerTextureKey,
   SCENES,
   STYLE_COLORS,
   STYLE_PROPS,
@@ -16,61 +17,139 @@ import {
   type PropKind,
   type StyleColorSet,
 } from "@/game/config/constants";
+import { SKINS, type PlayerPalette } from "@/game/skins/skinCatalog";
 import { hash01 } from "@/game/util/hash";
 
 type Facing = "front" | "back";
 
+/** Texture generations processed per frame — paces the loading process into
+ *  a visible bar instead of one blocking synchronous burst. */
+const BATCH_SIZE = 2;
+
 export class PreloadScene extends Phaser.Scene {
+  private queue: Array<() => void> = [];
+  private totalTasks = 0;
+  private progressBarBg!: Phaser.GameObjects.Rectangle;
+  private progressBarFill!: Phaser.GameObjects.Rectangle;
+  private progressLabel!: Phaser.GameObjects.Text;
+
   constructor() {
     super(SCENES.preload);
   }
 
-  preload(): void {
+  create(): void {
+    this.buildProgressUi();
+    this.queue = this.buildTextureQueue();
+    this.totalTasks = this.queue.length;
+  }
+
+  /**
+   * Drains a few texture-generation tasks per frame instead of running the
+   * whole batch synchronously in `create()`, so the loading screen shows
+   * real, incremental progress. Advances to MainScene once the queue drains.
+   */
+  override update(): void {
+    if (this.queue.length === 0) return;
+    const batch = this.queue.splice(0, BATCH_SIZE);
+    for (const task of batch) task();
+    this.updateProgressUi();
+    if (this.queue.length === 0) this.scene.start(SCENES.main);
+  }
+
+  private buildProgressUi(): void {
     const { width, height } = this.scale;
-    const label = this.add
-      .text(width / 2, height / 2, "LOADING", {
+    const barWidth = Math.min(240, width * 0.6);
+    const barHeight = 6;
+    const barX = width / 2 - barWidth / 2;
+    const barY = height / 2 + 16;
+
+    this.progressLabel = this.add
+      .text(width / 2, height / 2 - 8, "LOADING 0%", {
         fontFamily: "monospace",
         fontSize: "16px",
         color: "#c9b458",
       })
       .setOrigin(0.5);
 
-    this.load.on(Phaser.Loader.Events.COMPLETE, () => label.destroy());
+    this.progressBarBg = this.add
+      .rectangle(barX, barY, barWidth, barHeight, 0x2a2818)
+      .setOrigin(0, 0.5);
+    this.progressBarFill = this.add
+      .rectangle(barX, barY, 0, barHeight, 0xe4c94a)
+      .setOrigin(0, 0.5);
   }
 
-  create(): void {
-    this.generateTextures();
-    this.scene.start(SCENES.main);
+  private updateProgressUi(): void {
+    const done = this.totalTasks - this.queue.length;
+    const ratio = this.totalTasks === 0 ? 1 : done / this.totalTasks;
+    this.progressBarFill.width = this.progressBarBg.width * ratio;
+    this.progressLabel.setText(`LOADING ${Math.round(ratio * 100)}%`);
   }
 
-  private generateTextures(): void {
+  /** The full set of procedural texture-generation steps, as a queue of
+   *  deferred tasks rather than one synchronous call. */
+  private buildTextureQueue(): Array<() => void> {
+    const tasks: Array<() => void> = [];
     for (const style of LEVEL_STYLES) {
       const c = STYLE_COLORS[style];
       for (let variant = 0; variant < FLOOR_VARIANTS; variant++) {
-        this.makeFloor(TEXTURES.floor(style, variant), c, variant);
+        tasks.push(() => this.makeFloor(TEXTURES.floor(style, variant), c, variant));
       }
-      this.makeWallCrack(TEXTURES.wallCrack(style), c);
-      this.makeExit(TEXTURES.exit(style), c);
+      tasks.push(() => this.makeWallCrack(TEXTURES.wallCrack(style), c));
+      tasks.push(() => this.makeExit(TEXTURES.exit(style), c));
       for (let mask = 0; mask < WALL_MASK_COUNT; mask++) {
         for (let variant = 0; variant < WALL_VARIANTS; variant++) {
-          this.makeWallVariant(TEXTURES.wall(style, mask, variant), c, mask, variant);
+          tasks.push(() =>
+            this.makeWallVariant(TEXTURES.wall(style, mask, variant), c, mask, variant),
+          );
         }
       }
       for (const kind of STYLE_PROPS[style]) {
-        this.makeProp(TEXTURES.prop(kind), kind, c);
+        tasks.push(() => this.makeProp(TEXTURES.prop(kind), kind, c));
       }
     }
-    this.makeAlmondWater(TEXTURES.almondWater);
-    this.makePlayer(TEXTURES.player, "front", false);
-    this.makePlayer(TEXTURES.playerWalk, "front", true);
-    this.makePlayer(TEXTURES.playerBack, "back", false);
-    this.makePlayer(TEXTURES.playerBackWalk, "back", true);
-    this.makeMonster(TEXTURES.monster, "front", false);
-    this.makeMonster(TEXTURES.monsterWalk, "front", true);
-    this.makeMonster(TEXTURES.monsterBack, "back", false);
-    this.makeMonster(TEXTURES.monsterBackWalk, "back", true);
-    this.makeHole(TEXTURES.hole);
-    this.makeRubble(TEXTURES.rubble);
+    tasks.push(() => this.makeAlmondWater(TEXTURES.almondWater));
+    for (const skin of SKINS) {
+      tasks.push(
+        () =>
+          this.makePlayer(
+            playerTextureKey(skin.id, "front", false),
+            "front",
+            false,
+            skin.palette,
+          ),
+        () =>
+          this.makePlayer(
+            playerTextureKey(skin.id, "front", true),
+            "front",
+            true,
+            skin.palette,
+          ),
+        () =>
+          this.makePlayer(
+            playerTextureKey(skin.id, "back", false),
+            "back",
+            false,
+            skin.palette,
+          ),
+        () =>
+          this.makePlayer(
+            playerTextureKey(skin.id, "back", true),
+            "back",
+            true,
+            skin.palette,
+          ),
+      );
+    }
+    tasks.push(
+      () => this.makeMonster(TEXTURES.monster, "front", false),
+      () => this.makeMonster(TEXTURES.monsterWalk, "front", true),
+      () => this.makeMonster(TEXTURES.monsterBack, "back", false),
+      () => this.makeMonster(TEXTURES.monsterBackWalk, "back", true),
+      () => this.makeHole(TEXTURES.hole),
+      () => this.makeRubble(TEXTURES.rubble),
+    );
+    return tasks;
   }
 
   /** Fill a single "pixel" cell. Keeps sprite work readable. */
@@ -609,7 +688,12 @@ export class PreloadScene extends Phaser.Scene {
    * walking toward it. `stride` offsets the legs into a mid-step pose for
    * the second walk-cycle frame.
    */
-  private makePlayer(key: string, facing: Facing, stride: boolean): void {
+  private makePlayer(
+    key: string,
+    facing: Facing,
+    stride: boolean,
+    palette: PlayerPalette,
+  ): void {
     const s = PLAYER.size;
     const g = this.make.graphics({ x: 0, y: 0 }, false);
 
@@ -622,41 +706,41 @@ export class PreloadScene extends Phaser.Scene {
     g.fillEllipse(s / 2, s - 1, s - 4, 3);
 
     // Hair cap, rounded.
-    this.rr(g, COLORS.playerHair, 3, 1, s - 6, 5, 1);
-    this.px(g, COLORS.playerHairHi, 4, 1, s - 8, 1, 0.8);
+    this.rr(g, palette.hair, 3, 1, s - 6, 5, 1);
+    this.px(g, palette.hairHi, 4, 1, s - 8, 1, 0.8);
 
     if (facing === "front") {
       // Face with a shaded right cheek — soft two-tone blend.
-      this.rr(g, COLORS.playerSkin, 3, 5, s - 6, 4, 1);
-      this.px(g, COLORS.playerSkinShade, s - 6, 6, 2, 3, 0.8);
+      this.rr(g, palette.skin, 3, 5, s - 6, 4, 1);
+      this.px(g, palette.skinShade, s - 6, 6, 2, 3, 0.8);
       // Eyes.
       this.px(g, COLORS.playerOutline, 5, 7, 1, 1);
       this.px(g, COLORS.playerOutline, s - 6, 7, 1, 1);
     } else {
       // Back of the head: hair covers where the face would be, plus a
       // centre parting seam.
-      this.rr(g, COLORS.playerHair, 3, 5, s - 6, 4, 1);
+      this.rr(g, palette.hair, 3, 5, s - 6, 4, 1);
       this.px(g, COLORS.playerOutline, s / 2 - 0.5, 5, 1, 4, 0.5);
     }
 
     // Shirt torso + arms, shaded on the right, highlighted on the left.
-    this.rr(g, COLORS.playerShirt, 2, 9, s - 4, 5, 1);
-    this.px(g, COLORS.playerShirtHi, 3, 9, 2, 4, 0.6);
-    this.px(g, COLORS.playerShirtShade, s - 5, 9, 3, 5, 0.85);
-    this.px(g, COLORS.playerSkin, 2, 10, 1, 2);
-    this.px(g, COLORS.playerSkin, s - 3, 10, 1, 2);
+    this.rr(g, palette.shirt, 2, 9, s - 4, 5, 1);
+    this.px(g, palette.shirtHi, 3, 9, 2, 4, 0.6);
+    this.px(g, palette.shirtShade, s - 5, 9, 3, 5, 0.85);
+    this.px(g, palette.skin, 2, 10, 1, 2);
+    this.px(g, palette.skin, s - 3, 10, 1, 2);
     if (facing === "back") {
       // Spine seam down the back of the shirt.
-      this.px(g, COLORS.playerShirtShade, s / 2 - 0.5, 9, 1, 5, 0.6);
+      this.px(g, palette.shirtShade, s / 2 - 0.5, 9, 1, 5, 0.6);
     }
 
     // Legs, split left/right so a stride frame can offset them into a
     // mid-step pose (one leg forward/up, one back/down).
     const legW = (s - 6) / 2;
     const shift = stride ? 1 : 0;
-    this.rr(g, COLORS.playerPants, 3, 14 - shift, legW, 4, 1);
-    this.rr(g, COLORS.playerPants, 3 + legW, 14 + shift, legW, 4, 1);
-    this.px(g, COLORS.playerPantsShade, s - 5, 15 + shift, 2, 3, 0.7);
+    this.rr(g, palette.pants, 3, 14 - shift, legW, 4, 1);
+    this.rr(g, palette.pants, 3 + legW, 14 + shift, legW, 4, 1);
+    this.px(g, palette.pantsShade, s - 5, 15 + shift, 2, 3, 0.7);
     this.px(g, COLORS.playerOutline, s / 2 - 0.5, 14, 1, 4, 0.7);
 
     g.generateTexture(key, s, s);

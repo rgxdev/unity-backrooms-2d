@@ -101,6 +101,13 @@ export const JUMPSCARE = {
   peekVisibleMs: 900,
 } as const;
 
+/** Ambient environmental "process" pacing — flickers/whispers/thuds that are
+ *  pure atmosphere, independent of the monster director. */
+export const ANOMALY = {
+  minIntervalMs: 9000,
+  maxIntervalMs: 18000,
+} as const;
+
 /** Monster activity ramps up as the player nears the exit. */
 export const EXIT_DREAD = {
   /** Tile-distance from the exit at which activity starts ramping up. */
@@ -483,10 +490,6 @@ export const TEXTURES = {
   exit: (style: LevelStyle) => `tex-exit-${style}`,
   prop: (kind: PropKind) => `tex-prop-${kind}`,
   almondWater: "tex-almond-water",
-  player: "tex-player",
-  playerWalk: "tex-player-walk",
-  playerBack: "tex-player-back",
-  playerBackWalk: "tex-player-back-walk",
   monster: "tex-monster",
   monsterWalk: "tex-monster-walk",
   monsterBack: "tex-monster-back",
@@ -494,6 +497,19 @@ export const TEXTURES = {
   hole: "tex-hole",
   rubble: "tex-rubble",
 } as const;
+
+/**
+ * Player texture keys are generated per-skin (see `game/skins/skinCatalog`) —
+ * one front/back/walk set per unlockable skin — instead of a fixed set, so
+ * equipping a skin is just picking a different key, not swapping art.
+ */
+export function playerTextureKey(
+  skinId: string,
+  facing: "front" | "back",
+  stride: boolean,
+): string {
+  return `tex-player-${skinId}-${facing}${stride ? "-walk" : ""}`;
+}
 
 /** Walk-cycle frame swap: how often the "stride" leg-offset frame alternates
  *  with the neutral frame while a character is moving. */
