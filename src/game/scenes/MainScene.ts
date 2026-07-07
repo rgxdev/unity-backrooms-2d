@@ -158,6 +158,8 @@ export class MainScene extends Phaser.Scene {
   /** Camera post-processing (WebGL only — no-ops gracefully otherwise). */
   private vignetteFilter: SoftVignetteController | null = null;
   private barrelFilter: Phaser.Filters.Barrel | null = null;
+  /** Smoothed camera zoom driving the fear-based claustrophobic creep. */
+  private camZoom = 1;
 
   /** Permanent oldschool CRT dressing — scanlines + jittered film grain. */
   private scanlineOverlay: Phaser.GameObjects.TileSprite | null = null;
@@ -338,6 +340,7 @@ export class MainScene extends Phaser.Scene {
     this.nextBlackoutAt = -1;
     this.vignetteFilter = null;
     this.barrelFilter = null;
+    this.camZoom = 1;
     this.scanlineOverlay = null;
     this.grainOverlay = null;
     this.nextGrainJitterAt = 0;
@@ -1521,6 +1524,14 @@ export class MainScene extends Phaser.Scene {
   /** Applies the current fear level to the heartbeat cue and camera vignette. */
   private updateFear(fear: number, time: number): void {
     this.audio.updateHeartbeat(fear, time);
+
+    // Claustrophobic creep: the camera slowly tightens in as danger nears,
+    // easing back out once it passes — smoothed so a monster popping in/out
+    // of range doesn't snap the zoom, just nudges it.
+    const targetZoom = 1 + fear * 0.06;
+    this.camZoom = Phaser.Math.Linear(this.camZoom, targetZoom, 0.06);
+    this.cameras.main.setZoom(this.camZoom);
+
     const v = this.vignetteFilter;
     if (v) {
       // The vignette's x/y are normalized to the camera's *own* viewport, not
@@ -1647,6 +1658,12 @@ export class MainScene extends Phaser.Scene {
     this.cameras.main.flash(260, 160, 0, 0);
     this.cameras.main.shake(420, 0.018);
     this.pulseBarrel(0.9, 320);
+    this.tweens.add({
+      targets: this.cameras.main,
+      rotation: { from: (Math.random() < 0.5 ? -1 : 1) * 0.035, to: 0 },
+      duration: 380,
+      ease: "Sine.Out",
+    });
 
     if (this.lethal) this.onDeath();
   }
@@ -1925,6 +1942,12 @@ export class MainScene extends Phaser.Scene {
         this.audio.snarl();
         this.cameras.main.flash(220, 120, 0, 0);
         this.pulseBarrel(0.5, 240);
+        this.tweens.add({
+          targets: this.cameras.main,
+          rotation: { from: (Math.random() < 0.5 ? -1 : 1) * 0.025, to: 0 },
+          duration: 300,
+          ease: "Sine.Out",
+        });
         this.jumpscareMonster.pursue(playerPos, this.pursuitSpeed * 1.4);
         if (this.lethal) this.onDeath();
         // Despawn shortly after the attack regardless of outcome.

@@ -348,3 +348,75 @@ a {
   color: var(--accent);
   background: #1c1a10;
 }
+
+/* Custom Sound Effects (Settings) */
+.sound-slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sound-slot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.sound-slot__info {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.sound-slot__info label {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.sound-slot__badge {
+  font-size: 0.65rem;
+  letter-spacing: 0.08rem;
+  text-transform: uppercase;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.sound-slot__badge--on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sound-slot__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sound-slot__actions input[type="file"] {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  max-width: 180px;
+}
+
+.sound-slot__reset {
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  background: transparent;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05rem;
+}
+
+.sound-slot__reset:hover {
+  background: var(--danger);
+  color: var(--bg);
+}

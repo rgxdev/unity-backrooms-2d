@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { DIFFICULTIES } from "@/lib/schemas/settings";
+import { SOUND_SLOTS, type SoundSlot } from "@/lib/custom-sounds-store";
+import { FEATURES } from "@/lib/feature-flags";
 import { useSettings } from "./useSettings";
+import { useCustomSounds } from "./useCustomSounds";
 
 const DIFFICULTY_LABEL: Record<(typeof DIFFICULTIES)[number], string> = {
   easy: "Easy — no death, calm dread",
@@ -35,8 +38,52 @@ function VolumeField({
   );
 }
 
+function SoundSlotRow({
+  id,
+  label,
+  isCustom,
+  onUpload,
+  onReset,
+}: {
+  id: SoundSlot;
+  label: string;
+  isCustom: boolean;
+  onUpload: (file: File) => void;
+  onReset: () => void;
+}) {
+  const inputId = `sound-slot-${id}`;
+  return (
+    <div className="sound-slot">
+      <div className="sound-slot__info">
+        <label htmlFor={inputId}>{label}</label>
+        <span className={`sound-slot__badge${isCustom ? " sound-slot__badge--on" : ""}`}>
+          {isCustom ? "custom" : "default"}
+        </span>
+      </div>
+      <div className="sound-slot__actions">
+        <input
+          id={inputId}
+          type="file"
+          accept="audio/mpeg,audio/mp3,audio/*,.mp3"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) onUpload(file);
+            e.target.value = "";
+          }}
+        />
+        {isCustom && (
+          <button type="button" className="sound-slot__reset" onClick={onReset}>
+            Reset
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { settings, update } = useSettings();
+  const { active, upload, reset } = useCustomSounds();
 
   return (
     <main className="page">
@@ -85,6 +132,29 @@ export default function SettingsPage() {
           onChange={(e) => update({ showFps: e.target.checked })}
         />
       </div>
+
+      {FEATURES.customSoundEffects && (
+        <div className="field field--stack">
+          <label>Custom Sound Effects</label>
+          <p className="hint">
+            Replace any scare cue with your own audio file — stored only in
+            this browser, never uploaded anywhere. Leave a slot on "default"
+            to keep the built-in synthesised sound.
+          </p>
+          <div className="sound-slot-list">
+            {SOUND_SLOTS.map((slot) => (
+              <SoundSlotRow
+                key={slot.id}
+                id={slot.id}
+                label={slot.label}
+                isCustom={active.has(slot.id)}
+                onUpload={(file) => upload(slot.id, file)}
+                onReset={() => reset(slot.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       <Link href="/" className="back-link">
         &larr; Back to menu

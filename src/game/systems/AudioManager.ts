@@ -2,22 +2,76 @@ import type Phaser from "phaser";
 import { FEAR } from "@/game/config/constants";
 import { getSettings, subscribeSettings } from "@/lib/settings-store";
 import type { Settings } from "@/lib/schemas/settings";
+import {
+  getAllCustomSounds,
+  subscribeCustomSounds,
+  type SoundSlot,
+} from "@/lib/custom-sounds-store";
+import { FEATURES } from "@/lib/feature-flags";
 
 /**
  * Bridges app settings to the Phaser sound system and synthesises the monster
  * cues procedurally via the WebAudio context (no sample assets yet). Falls back
  * to silence gracefully when WebAudio is unavailable (HTML5 audio / muted).
+ *
+ * Any cue can be overridden by a player-imported MP3 (see
+ * `@/lib/custom-sounds-store`) — each public cue method checks
+ * {@link playCustom} first and only falls through to its synthesised version
+ * when no custom sound is loaded for that slot.
  */
 export class AudioManager {
   private unsubscribe: (() => void) | null = null;
+  private unsubscribeCustomSounds: (() => void) | null = null;
   private masterVolume = 1;
   private heartbeatArmed = false;
   private heartbeatNextAt = 0;
   private humNodes: { osc: OscillatorNode; gain: GainNode } | null = null;
+  private customBuffers = new Map<SoundSlot, AudioBuffer>();
 
   constructor(private readonly sound: Phaser.Sound.BaseSoundManager) {
     this.apply(getSettings());
     this.unsubscribe = subscribeSettings((s) => this.apply(s));
+    if (FEATURES.customSoundEffects) {
+      void this.reloadCustomSounds();
+      this.unsubscribeCustomSounds = subscribeCustomSounds(() => {
+        void this.reloadCustomSounds();
+      });
+    }
+  }
+
+  /** Decodes every stored custom MP3 into an AudioBuffer ready for instant
+   *  playback — re-run whenever the settings page saves/clears one. */
+  private async reloadCustomSounds(): Promise<void> {
+    const ctx = this.context;
+    if (!ctx) return;
+    const blobs = await getAllCustomSounds();
+    const next = new Map<SoundSlot, AudioBuffer>();
+    for (const [slot, blob] of Object.entries(blobs) as [SoundSlot, Blob][]) {
+      try {
+        const buffer = await ctx.decodeAudioData(await blob.arrayBuffer());
+        next.set(slot, buffer);
+      } catch {
+        // Corrupt/unsupported file — that slot just stays on the synth cue.
+      }
+    }
+    this.customBuffers = next;
+  }
+
+  /** Plays the player-imported MP3 for `slot`, if any. Returns whether it
+   *  fired, so callers can skip their synthesised fallback. */
+  private playCustom(slot: SoundSlot, pan = 0, volumeScale = 1): boolean {
+    if (!FEATURES.customSoundEffects) return false;
+    const ctx = this.context;
+    const buffer = this.customBuffers.get(slot);
+    if (!ctx || !buffer || this.masterVolume <= 0) return false;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = Math.max(0.0001, this.masterVolume * volumeScale);
+    src.connect(gain);
+    this.connectOut(gain, ctx, pan);
+    src.start();
+    return true;
   }
 
   private apply(settings: Settings): void {
@@ -121,12 +175,14 @@ export class AudioManager {
   /** Distant, muffled presence — "you can hear something nearby".
    *  `pan` (-1..1) hints at which side it's on. */
   growl(intensity = 0.35, pan = 0): void {
+    if (this.playCustom("growl", pan, intensity)) return;
     this.tone(72, 0.7, intensity, "sawtooth", pan);
     this.tone(48, 0.9, intensity * 0.7, "sine", pan);
   }
 
   /** Loud, close awakening roar when the chase begins. */
   roar(): void {
+    if (this.playCustom("roar")) return;
     this.tone(90, 1.1, 0.6, "sawtooth");
     this.tone(140, 0.5, 0.4, "square");
   }
@@ -134,6 +190,7 @@ export class AudioManager {
   /** Sharp, high stinger — the "something just flashed into view" jump-scare
    *  cue. Distinct from the low ambient growl and the pursuer's roar. */
   shriek(intensity = 0.4, pan = 0): void {
+    if (this.playCustom("shriek", pan, intensity)) return;
     const ctx = this.context;
     if (!ctx || this.masterVolume <= 0) return;
     const gain = ctx.createGain();
@@ -223,6 +280,7 @@ export class AudioManager {
   /** A low, garbled murmur just at the edge of hearing — no one there.
    *  ProcessDirector's ambient anomaly cue (no direction; always distant). */
   whisper(): void {
+    if (this.playCustom("whisper", 0, 0.6)) return;
     const ctx = this.context;
     if (!ctx || this.masterVolume <= 0) return;
     const gain = ctx.createGain();
@@ -297,6 +355,7 @@ export class AudioManager {
    *  something in pain, or pretending to be. Distinct from {@link growl}'s
    *  steady lurking presence: this one wavers, like a throat straining. */
   moan(intensity = 0.4, pan = 0): void {
+    if (this.playCustom("moan", pan, intensity)) return;
     const ctx = this.context;
     if (!ctx || this.masterVolume <= 0) return;
     const gain = ctx.createGain();
@@ -330,6 +389,7 @@ export class AudioManager {
    *  precisely because it sounds amused. Distinct from every scream/growl
    *  cue, which all read as hostile rather than delighted. */
   laugh(intensity = 0.3, pan = 0): void {
+    if (this.playCustom("laugh", pan, intensity)) return;
     const ctx = this.context;
     if (!ctx || this.masterVolume <= 0) return;
     const beats = 3 + Math.floor(Math.random() * 3);
@@ -358,6 +418,7 @@ export class AudioManager {
    *  falling out of sight. Transient thump plus a bright noise crack so it
    *  reads as an impact, not a tone. */
   bang(intensity = 0.5, pan = 0): void {
+    if (this.playCustom("bang", pan, intensity)) return;
     const ctx = this.context;
     if (!ctx || this.masterVolume <= 0) return;
     this.noiseBurst(0.12, intensity, 3200, pan);
@@ -481,6 +542,7 @@ export class AudioManager {
   /** The Stalker's lunge: a ragged shriek-into-growl hybrid, close and wet —
    *  distinct from every other cue, reserved for the "don't look away" grab. */
   scream(intensity = 0.75, pan = 0): void {
+    if (this.playCustom("scream", pan, intensity)) return;
     const ctx = this.context;
     if (!ctx || this.masterVolume <= 0) return;
     const gain = ctx.createGain();
@@ -551,5 +613,7 @@ export class AudioManager {
     this.stopHum();
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.unsubscribeCustomSounds?.();
+    this.unsubscribeCustomSounds = null;
   }
 }
