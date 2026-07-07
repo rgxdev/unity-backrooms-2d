@@ -24,6 +24,7 @@ export const ANOMALY_TYPES = [
   "moan",
   "bang",
   "flash",
+  "howl",
 ] as const;
 export type AnomalyType = (typeof ANOMALY_TYPES)[number];
 

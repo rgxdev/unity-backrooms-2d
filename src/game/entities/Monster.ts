@@ -48,7 +48,14 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
     /** Per-role tint (see MONSTER_TINT) so pursuer/lurker/jump-scare read as
      *  distinct threats at a glance. */
     tint?: number,
-    opts?: { noWalkCycle?: boolean },
+    opts?: {
+      noWalkCycle?: boolean;
+      /** Non-uniform base scale (e.g. the Hound's leaner, lower stance) —
+       *  reads as a distinct silhouette without new sprite art. The idle
+       *  hunch-and-lurch tween scales relative to this base instead of 1. */
+      scaleX?: number;
+      scaleY?: number;
+    },
   ) {
     super(scene, x, y, TEXTURES.monster);
     scene.add.existing(this);
@@ -60,6 +67,10 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
     this.noWalkCycle = opts?.noWalkCycle ?? false;
     if (tint !== undefined) this.setTint(tint);
 
+    const baseScaleX = opts?.scaleX ?? 1;
+    const baseScaleY = opts?.scaleY ?? 1;
+    this.setScale(baseScaleX, baseScaleY);
+
     this.setOrigin(0.5, 0.5);
     const body = this.body as Phaser.Physics.Arcade.Body;
     body.setSize(
@@ -69,11 +80,13 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
     body.setCollideWorldBounds(true);
 
     // Slow, uneven hunch-and-lurch — unsettling rather than a mechanical
-    // walk cycle, and independent of the physics body.
+    // walk cycle, and independent of the physics body. Scales relative to
+    // the base scale so a Hound's lean stance breathes instead of snapping
+    // back to a uniform 1:1.
     this.idleTween = scene.tweens.add({
       targets: this,
-      scaleY: 0.9,
-      scaleX: 1.06,
+      scaleY: baseScaleY * 0.9,
+      scaleX: baseScaleX * 1.06,
       duration: 480,
       yoyo: true,
       repeat: -1,

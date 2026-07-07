@@ -59,3 +59,15 @@ export const DEFAULT_MONSTER_TUNING: MonsterTuning = {
   hearingRange: 180,
   reachRadius: 6,
 };
+
+/** The Hound (see constants.ts's {@link HOUND}) — faster and noise-drawn,
+ *  shorter sighted than the default lurker. */
+export const HOUND_TUNING: MonsterTuning = {
+  ai: DEFAULT_AI_CONFIG,
+  patrolSpeed: 76,
+  chaseSpeed: 150,
+  searchSpeed: 100,
+  sightRange: 200,
+  hearingRange: 260,
+  reachRadius: 6,
+};

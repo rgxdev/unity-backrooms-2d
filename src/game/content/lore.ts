@@ -103,6 +103,16 @@ export const LEVEL_LORE: Record<number, readonly LoreEntry[]> = {
         "not engage. Hounds: travel in packs, drawn to sustained noise — if " +
         "you hear distant howling, it is already tracking something.",
     },
+    {
+      kind: "letter",
+      title: "Shaking Handwriting",
+      body:
+        "First howl I've heard since coming through. Long, low, and it " +
+        "didn't answer when I stopped moving to listen for a second one. " +
+        "Worse than the noise was how close it sounded and how far I " +
+        "still had to go before the next pillar row. Kept my footsteps " +
+        "small the rest of the way.",
+    },
   ],
 
   // Level 2 — Pipe Dreams
@@ -141,6 +151,16 @@ export const LEVEL_LORE: Record<number, readonly LoreEntry[]> = {
         "The smell stops registering after a while, same as the noise did " +
         "back in the Lobby. That's the pattern with every level, I think — " +
         "it wants you comfortable right up until it doesn't.",
+    },
+    {
+      kind: "letter",
+      title: "Shaky Follow-Up",
+      body:
+        "The howling from the Habitable Zone followed me down here, or " +
+        "one just like it did. Pipes carry sound strangely — couldn't tell " +
+        "which junction it came from, which meant I couldn't tell which " +
+        "junction to avoid. Went the way it sounded quietest. Still here, " +
+        "so that much worked.",
     },
   ],
 

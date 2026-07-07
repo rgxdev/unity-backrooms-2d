@@ -180,6 +180,33 @@ export class AudioManager {
     this.tone(48, 0.9, intensity * 0.7, "sine", pan);
   }
 
+  /** Two sharp barks into a snarl tail — the Hound's noise-drawn presence
+   *  cue. Distinct from {@link growl}'s low sustained rumble: percussive and
+   *  canine rather than an ambient drone. */
+  bark(intensity = 0.4, pan = 0): void {
+    if (this.playCustom("bark", pan, intensity)) return;
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    let t = ctx.currentTime;
+    for (let i = 0; i < 2; i++) {
+      const gain = ctx.createGain();
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(190, t);
+      osc.frequency.exponentialRampToValueAtTime(85, t + 0.09);
+      const peak = Math.max(0.0001, intensity * this.masterVolume);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(peak, t + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+      osc.connect(gain);
+      this.connectOut(gain, ctx, pan);
+      osc.start(t);
+      osc.stop(t + 0.12);
+      t += 0.14;
+    }
+    this.noiseBurst(0.15, intensity * 0.5, 2000, pan);
+  }
+
   /** Loud, close awakening roar when the chase begins. */
   roar(): void {
     if (this.playCustom("roar")) return;
@@ -537,6 +564,38 @@ export class AudioManager {
     osc.start();
     osc.stop(ctx.currentTime + 1.05);
     this.noiseBurst(0.5, 0.12, 1400, pan);
+  }
+
+  /** A long, rising-then-falling howl carried from somewhere else in the
+   *  maze — the Hound pack's calling card (see lore.ts). Purely ambient: it
+   *  never signals an actual nearby Hound, just that something out there is
+   *  hunting. Distinct from {@link distantScream}'s ragged human-adjacent
+   *  cry — this one is sustained and tonal, unmistakably animal. */
+  howl(pan = 0): void {
+    if (this.playCustom("howl", pan, 0.4)) return;
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(500, ctx.currentTime);
+    filter.Q.value = 2;
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    const t0 = ctx.currentTime;
+    osc.frequency.setValueAtTime(220, t0);
+    osc.frequency.exponentialRampToValueAtTime(520, t0 + 0.4);
+    osc.frequency.exponentialRampToValueAtTime(340, t0 + 1.1);
+    osc.frequency.exponentialRampToValueAtTime(140, t0 + 1.8);
+    const peak = Math.max(0.0001, 0.32 * this.masterVolume);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.35);
+    gain.gain.setValueAtTime(peak * 0.8, t0 + 1.2);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.9);
+    osc.connect(filter).connect(gain);
+    this.connectOut(gain, ctx, pan);
+    osc.start();
+    osc.stop(t0 + 1.95);
   }
 
   /** The Stalker's lunge: a ragged shriek-into-growl hybrid, close and wet —

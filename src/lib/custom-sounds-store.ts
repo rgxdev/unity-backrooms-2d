@@ -8,11 +8,13 @@ export const SOUND_SLOTS = [
   { id: "scream", label: "Scream — the chase's \"don't look away\" grab" },
   { id: "roar", label: "Roar — pursuit begins" },
   { id: "growl", label: "Growl — lurking presence nearby" },
+  { id: "bark", label: "Bark — Hound presence nearby" },
   { id: "shriek", label: "Shriek — jump-scare stinger" },
   { id: "moan", label: "Moan — guttural ambient anomaly" },
   { id: "laugh", label: "Laugh — creepy ambient anomaly" },
   { id: "bang", label: "Bang — sudden slam ambient anomaly" },
   { id: "whisper", label: "Whisper — distant ambient anomaly" },
+  { id: "howl", label: "Howl — distant Hound ambient anomaly" },
 ] as const;
 
 export type SoundSlot = (typeof SOUND_SLOTS)[number]["id"];

@@ -638,6 +638,30 @@ export const MONSTER_TINT = {
   lurker: 0xffffff, // neutral — the default patrol threat
   jumpscare: 0xcbb8ff, // pale violet — the fleeting glimpse
   stalker: 0xd8d0e8, // bone-pale, almost still-life — the "don't look away" thing
+  hound: 0xc46a3c, // rusty feral red-brown — the noise-drawn pack hunter
+} as const;
+
+/**
+ * The Hound: a second ambient-monster archetype (see lore.ts's "Entities of
+ * the Upper Levels" entry) — faster and leaner than the default lurker, and
+ * drawn by noise rather than sight. A fraction of a level's ambient monsters
+ * roll as Hounds instead, from Level 1 (Habitable Zone) onward, so the
+ * threat mix varies run to run instead of every patrol reading identical.
+ */
+export const HOUND = {
+  /** Chance a given non-pursuer ambient monster spawns as a Hound. */
+  spawnChance: 0.32,
+  /** Lowest level index Hounds start appearing at (Level 0 stays lurker-only,
+   *  matching the field-guide's "Upper Levels" framing). */
+  minLevelIndex: 1,
+  /** Faster patrol than the default lurker (see MONSTER.patrolSpeed). */
+  patrolSpeed: 76,
+  /** Multiplies the scene's shared Pursuit-phase chase speed. */
+  chaseSpeedMultiplier: 1.22,
+  /** Non-uniform base scale — leaner and lower, reading as a hunting
+   *  quadruped without needing new sprite art. */
+  scaleX: 1.12,
+  scaleY: 0.78,
 } as const;
 
 /**

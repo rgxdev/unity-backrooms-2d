@@ -12,6 +12,7 @@ import {
   FEAR,
   FLASHLIGHT,
   FLOOR_VARIANTS,
+  HOUND,
   JUMPSCARE,
   LORE_PICKUP,
   MONSTER_STEALTH,
@@ -55,7 +56,7 @@ import {
   type AnomalyType,
   ProcessDirector,
 } from "@/game/ai/ProcessDirector";
-import { DEFAULT_MONSTER_TUNING } from "@/game/ai/types";
+import { DEFAULT_MONSTER_TUNING, HOUND_TUNING } from "@/game/ai/types";
 import { StalkerAI, StalkerState } from "@/game/ai/StalkerAI";
 import type { Vec2 } from "@/game/ai/steering";
 import { findPath } from "@/game/ai/pathfinding";
@@ -120,6 +121,9 @@ export class MainScene extends Phaser.Scene {
   /** Per-monster: next time it's allowed to recompute its maze route to the
    *  player (see ai/pathfinding.ts). */
   private readonly pursuitPathRecalcAt = new WeakMap<Monster, number>();
+  /** Monsters rolled as Hounds (see constants.ts's HOUND) — faster, leaner,
+   *  noise-drawn, distinct presence cue. */
+  private readonly houndMonsters = new WeakSet<Monster>();
   /** True once the level has resolved (escaped or died); freezes gameplay. */
   private ended = false;
   private restarted = false;
@@ -1087,19 +1091,32 @@ export class MainScene extends Phaser.Scene {
     );
   }
 
+  /** Non-pursuer ambient monsters roll as Hounds — faster, leaner, drawn by
+   *  noise — from Level 1 onward, so the threat mix isn't identical every
+   *  run. Deterministic per spawn position so a given seed always resolves
+   *  the same way. */
+  private isHoundSpawn(id: string, x: number, y: number): boolean {
+    if (id === "pursuer") return false;
+    if (this.levelIndex < HOUND.minLevelIndex) return false;
+    return hash01(x, y, this.levelIndex * 97 + 13) < HOUND.spawnChance;
+  }
+
   private spawnMonsters(): void {
     this.monsters = this.level.monsters.map((spawn) => {
       const origin = this.centreOf(spawn.x, spawn.y);
       const waypoints = spawn.patrol.map((p) => this.centreOf(p.x, p.y));
+      const isHound = this.isHoundSpawn(spawn.id, spawn.x, spawn.y);
       const monster = new Monster(
         this,
         origin.x,
         origin.y,
         waypoints,
-        DEFAULT_MONSTER_TUNING,
-        this.monsterTint(spawn.id),
+        isHound ? HOUND_TUNING : DEFAULT_MONSTER_TUNING,
+        isHound ? this.roleTint(MONSTER_TINT.hound) : this.monsterTint(spawn.id),
+        isHound ? { scaleX: HOUND.scaleX, scaleY: HOUND.scaleY } : undefined,
       );
       monster.setDepth(90);
+      if (isHound) this.houndMonsters.add(monster);
       this.physics.add.collider(monster, this.walls);
       return monster;
     });
@@ -1380,7 +1397,10 @@ export class MainScene extends Phaser.Scene {
         })) ?? [],
       );
     }
-    monster.followChasePath(this.pursuitSpeed, playerPos);
+    const speed = this.houndMonsters.has(monster)
+      ? this.pursuitSpeed * HOUND.chaseSpeedMultiplier
+      : this.pursuitSpeed;
+    monster.followChasePath(speed, playerPos);
   }
 
   private inRect(
@@ -1883,15 +1903,25 @@ export class MainScene extends Phaser.Scene {
       DREAD.cueCooldownMs *
       (1 - exitProximity * (1 - EXIT_DREAD.minIntervalScale));
     if (time - this.lastCueAt < cooldown) return;
-    const nearest = Math.min(
-      ...this.monsters.map((m) => m.distanceTo(playerPos)),
-    );
+    let nearest = Infinity;
+    let nearestMonster: Monster | null = null;
+    for (const m of this.monsters) {
+      const d = m.distanceTo(playerPos);
+      if (d < nearest) {
+        nearest = d;
+        nearestMonster = m;
+      }
+    }
     if (nearest > DREAD.presenceRadius) return;
 
     this.lastCueAt = time;
     // Louder the closer it is.
     const closeness = 1 - nearest / DREAD.presenceRadius;
-    this.audio.growl(0.25 + closeness * 0.4);
+    if (nearestMonster && this.houndMonsters.has(nearestMonster)) {
+      this.audio.bark(0.3 + closeness * 0.45);
+    } else {
+      this.audio.growl(0.25 + closeness * 0.4);
+    }
     this.tweens.add({
       targets: this.presenceOverlay,
       alpha: { from: 0, to: 0.18 + closeness * 0.15 },
@@ -2321,6 +2351,18 @@ export class MainScene extends Phaser.Scene {
       case "flash":
         this.triggerSubliminalFlash();
         break;
+      case "howl": {
+        const pan = Math.random() * 2 - 1;
+        this.audio.howl(pan);
+        this.tweens.add({
+          targets: this.presenceOverlay,
+          alpha: { from: 0, to: 0.22 },
+          duration: 600,
+          yoyo: true,
+          ease: "Sine.InOut",
+        });
+        break;
+      }
     }
   }
 
