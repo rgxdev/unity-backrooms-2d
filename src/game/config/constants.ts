@@ -558,9 +558,9 @@ export const SCENES = {
 } as const;
 
 export const VISIBILITY = {
-  revealRadiusTiles: 6,
+  revealRadiusTiles: 8,
   losStepTiles: 0.25,
-  dimAlpha: 0.55,
+  dimAlpha: 0.4,
   /** How long a tile's fog fades between states — the "cleaner" smooth reveal
    *  instead of an instant pop. */
   fadeMs: 260,
