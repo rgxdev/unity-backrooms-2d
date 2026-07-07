@@ -1,15 +1,18 @@
 import Phaser from "phaser";
 import {
   ANOMALY,
+  BLACKOUT_EVENT,
   BLACKOUT_MIN_ALPHA,
   DECORATION,
   DIFFICULTY_CONFIG,
   DREAD,
   EXIT_DREAD,
+  FEAR,
   FLOOR_VARIANTS,
   JUMPSCARE,
   MONSTER_TINT,
   SCENES,
+  STALKER,
   STYLE_COLORS,
   STYLE_PROPS,
   TEXTURES,
@@ -39,6 +42,7 @@ import {
 import { GamePhase, MonsterDirector } from "@/game/ai/MonsterDirector";
 import { type AnomalyType, ProcessDirector } from "@/game/ai/ProcessDirector";
 import { DEFAULT_MONSTER_TUNING } from "@/game/ai/types";
+import { StalkerAI, StalkerState } from "@/game/ai/StalkerAI";
 import type { Vec2 } from "@/game/ai/steering";
 import { getSettings } from "@/lib/settings-store";
 import { completeLevel, getProgress } from "@/lib/progress-store";
@@ -109,6 +113,20 @@ export class MainScene extends Phaser.Scene {
   private jumpscareNextAt = -1;
   private jumpscareDespawnAt = 0;
   private jumpscareAttacked = false;
+  /** True when the current encounter is a silent "peek" — it never attacks,
+   *  it just proves something was watching. */
+  private jumpscareIsPeek = false;
+
+  /** The Stalker: a "don't look away" horror mechanic — see StalkerAI. */
+  private readonly stalkerAI = new StalkerAI();
+  private stalkerMonster: Monster | null = null;
+
+  /** Random ambient power-flicker beat — pure atmosphere. */
+  private nextBlackoutAt = -1;
+
+  /** Camera post-processing (WebGL only — no-ops gracefully otherwise). */
+  private vignetteFilter: Phaser.Filters.Vignette | null = null;
+  private barrelFilter: Phaser.Filters.Barrel | null = null;
 
   /** Scattered Almond Water pickups still on the floor. */
   private almondBottles: Phaser.GameObjects.Image[] = [];
@@ -128,7 +146,10 @@ export class MainScene extends Phaser.Scene {
     const settings = getSettings();
     const progress = getProgress();
     this.levelIndex = progress.currentLevel;
-    this.skinId = resolveEquippedSkinId(progress.unlockedSkins, settings.skinId);
+    this.skinId = resolveEquippedSkinId(
+      progress.unlockedSkins,
+      settings.skinId,
+    );
     this.difficulty = settings.difficulty;
     const cfg = DIFFICULTY_CONFIG[this.difficulty];
     this.lethal = cfg.lethal;
@@ -174,8 +195,10 @@ export class MainScene extends Phaser.Scene {
       VISIBILITY.revealRadiusTiles,
     );
     this.spawnMonsters();
+    this.spawnStalker();
     this.buildExit();
     this.buildPresenceOverlay();
+    this.setupFilters();
     this.audio = new AudioManager(this.sound);
     this.audio.startHum();
 
@@ -212,6 +235,12 @@ export class MainScene extends Phaser.Scene {
     this.jumpscareNextAt = -1;
     this.jumpscareDespawnAt = 0;
     this.jumpscareAttacked = false;
+    this.jumpscareIsPeek = false;
+    this.stalkerAI.reset();
+    this.stalkerMonster = null;
+    this.nextBlackoutAt = -1;
+    this.vignetteFilter = null;
+    this.barrelFilter = null;
     this.runStartedAt = 0;
     this.almondBottles = [];
     this.visionBoosted = false;
@@ -267,7 +296,12 @@ export class MainScene extends Phaser.Scene {
    * detail" variant (see PreloadScene) stays rare — deterministic per tile
    * coordinate, so it's stable across re-renders without storing state.
    */
-  private pickVariant(x: number, y: number, seed: number, count: number): number {
+  private pickVariant(
+    x: number,
+    y: number,
+    seed: number,
+    count: number,
+  ): number {
     const n = hash01(x, y, seed);
     if (count === 3) {
       if (n < 0.55) return 0;
@@ -488,14 +522,20 @@ export class MainScene extends Phaser.Scene {
 
   /** Blend a role's base tint toward this level's mood colour. */
   private roleTint(base: number): number {
-    return this.blendTint(base, STYLE_COLORS[this.theme.style].monsterMood, 0.3);
+    return this.blendTint(
+      base,
+      STYLE_COLORS[this.theme.style].monsterMood,
+      0.3,
+    );
   }
 
   /** Pursuer reads hottest (it's the one that ends the level); everything
    *  else patrols as the neutral default — both subtly tinted toward this
    *  level's mood colour. */
   private monsterTint(id: string): number {
-    return this.roleTint(id === "pursuer" ? MONSTER_TINT.pursuer : MONSTER_TINT.lurker);
+    return this.roleTint(
+      id === "pursuer" ? MONSTER_TINT.pursuer : MONSTER_TINT.lurker,
+    );
   }
 
   private spawnMonsters(): void {
@@ -514,6 +554,97 @@ export class MainScene extends Phaser.Scene {
       this.physics.add.collider(monster, this.walls);
       return monster;
     });
+  }
+
+  /** A walkable, in-bounds tile at a random angle within `[minRadiusTiles,
+   *  maxRadiusTiles]` of `origin` — used to place/relocate the Stalker and
+   *  jump-scare encounters off-stage from the player. */
+  private randomFloorTileAround(
+    origin: Vec2,
+    minRadiusTiles: number,
+    maxRadiusTiles: number,
+    attempts = 20,
+  ): Vec2 | null {
+    for (let i = 0; i < attempts; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Phaser.Math.FloatBetween(minRadiusTiles, maxRadiusTiles);
+      const tx = Math.round(origin.x + Math.cos(angle) * dist);
+      const ty = Math.round(origin.y + Math.sin(angle) * dist);
+      if (
+        tx < 0 ||
+        ty < 0 ||
+        tx >= this.level.width ||
+        ty >= this.level.height
+      ) {
+        continue;
+      }
+      if (this.isWallTile(tx, ty) || this.isHoleTile(tx, ty)) continue;
+      return { x: tx, y: ty };
+    }
+    return null;
+  }
+
+  /** Spawns the Stalker — a single persistent "don't look away" horror
+   *  (see StalkerAI) — well off-stage from the player's start. */
+  private spawnStalker(): void {
+    const origin = this.playerTile();
+    const tile =
+      this.randomFloorTileAround(
+        origin,
+        STALKER.respawnMinRadiusTiles,
+        STALKER.respawnMaxRadiusTiles,
+      ) ?? this.level.spawn;
+    const c = this.centreOf(tile.x, tile.y);
+    const monster = new Monster(
+      this,
+      c.x,
+      c.y,
+      [],
+      DEFAULT_MONSTER_TUNING,
+      this.roleTint(MONSTER_TINT.stalker),
+      { noWalkCycle: true },
+    );
+    monster.setDepth(91);
+    this.physics.add.collider(monster, this.walls);
+    this.stalkerMonster = monster;
+  }
+
+  /** Teleports the Stalker somewhere fresh and out of sight — used after a
+   *  lunge retreats it off-stage. */
+  private relocateStalker(): void {
+    const monster = this.stalkerMonster;
+    if (!monster) return;
+    const tile = this.randomFloorTileAround(
+      this.playerTile(),
+      STALKER.respawnMinRadiusTiles,
+      STALKER.respawnMaxRadiusTiles,
+    );
+    if (!tile) return;
+    const c = this.centreOf(tile.x, tile.y);
+    monster.setPosition(c.x, c.y);
+  }
+
+  /**
+   * Adds the vignette/barrel camera filters that sell dynamic fear (see
+   * {@link updateFear} / {@link pulseBarrel}). Filters are WebGL-only in
+   * Phaser 4 — this no-ops gracefully under the Canvas fallback.
+   */
+  private setupFilters(): void {
+    if (this.game.renderer.type !== Phaser.WEBGL) return;
+    try {
+      const cam = this.cameras.main;
+      this.vignetteFilter = cam.filters.internal.addVignette(
+        0.5,
+        0.5,
+        FEAR.vignetteMaxRadius,
+        FEAR.vignetteMinStrength,
+        0x000000,
+      );
+      this.barrelFilter = cam.filters.internal.addBarrel(1);
+    } catch {
+      this.vignetteFilter = null;
+      this.barrelFilter = null;
+    }
   }
 
   private buildExit(): void {
@@ -549,7 +680,12 @@ export class MainScene extends Phaser.Scene {
     for (const d of deltas) {
       const nx = exit.x + d.x;
       const ny = exit.y + d.y;
-      if (nx < 0 || ny < 0 || nx >= this.level.width || ny >= this.level.height) {
+      if (
+        nx < 0 ||
+        ny < 0 ||
+        nx >= this.level.width ||
+        ny >= this.level.height
+      ) {
         continue;
       }
       const nc = this.centreOf(nx, ny);
@@ -599,21 +735,26 @@ export class MainScene extends Phaser.Scene {
     };
   }
 
-  private inRect(px: number, py: number, r: LevelData["pursuitTrigger"]): boolean {
+  private inRect(
+    px: number,
+    py: number,
+    r: LevelData["pursuitTrigger"],
+  ): boolean {
     if (!r) return false;
     return px >= r.x && px < r.x + r.width && py >= r.y && py < r.y + r.height;
   }
 
   /** Advance the dread director and drive the monsters for the current phase. */
-  private updateAi(time: number): void {
+  private updateAi(time: number, deltaMs: number): void {
     if (this.ended) {
       for (const m of this.monsters) m.freeze();
       this.jumpscareMonster?.freeze();
+      this.stalkerMonster?.freeze();
       return;
     }
-    if (this.monsters.length === 0) return;
 
     const tile = this.playerTile();
+    const playerPos: Vec2 = { x: this.player.x, y: this.player.y };
     const atExit =
       !!this.level.exit &&
       tile.x === this.level.exit.x &&
@@ -628,7 +769,6 @@ export class MainScene extends Phaser.Scene {
     this.phase = this.director.update({ inPursuitTrigger, atExit });
     if (this.phase !== prev) this.onPhaseChange(this.phase);
 
-    const playerPos: Vec2 = { x: this.player.x, y: this.player.y };
     switch (this.phase) {
       case GamePhase.Ambient: {
         // Monster activity ramps up the closer the player gets to the exit.
@@ -637,10 +777,13 @@ export class MainScene extends Phaser.Scene {
         for (const m of this.monsters) m.tickAmbient(speedBoost);
         this.presenceCue(time, playerPos, proximity);
         this.updateJumpscare(time, playerPos, proximity);
+        this.updateStalker(deltaMs, playerPos);
+        this.updateBlackout(time);
         break;
       }
       case GamePhase.Pursuit: {
         this.despawnJumpscare();
+        this.hideStalker();
         let nearest = Infinity;
         for (const m of this.monsters) {
           m.pursue(playerPos, this.pursuitSpeed);
@@ -653,8 +796,11 @@ export class MainScene extends Phaser.Scene {
       case GamePhase.Escaped:
         for (const m of this.monsters) m.freeze();
         this.jumpscareMonster?.freeze();
+        this.hideStalker();
         break;
     }
+
+    this.updateFear(this.computeFear(playerPos), time);
   }
 
   private onPhaseChange(phase: GamePhase): void {
@@ -668,6 +814,219 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * 0..1 dread level derived from the nearest threat this frame — drives the
+   * heartbeat cue and the screen vignette so tension reads physically. Takes
+   * the single scariest signal in play rather than summing them.
+   */
+  private computeFear(playerPos: Vec2): number {
+    let fear = 0;
+    if (this.phase === GamePhase.Pursuit) fear = Math.max(fear, 0.85);
+    for (const m of this.monsters) {
+      const closeness = 1 - m.distanceTo(playerPos) / DREAD.presenceRadius;
+      fear = Math.max(fear, closeness);
+    }
+    if (this.jumpscareMonster) {
+      fear = Math.max(fear, this.jumpscareIsPeek ? 0.55 : 0.85);
+    }
+    if (this.stalkerMonster) {
+      const state = this.stalkerAI.current;
+      if (state === StalkerState.Frozen) {
+        fear = Math.max(fear, 0.8);
+      } else if (state === StalkerState.Creeping) {
+        const d = this.stalkerMonster.distanceTo(playerPos);
+        fear = Math.max(
+          fear,
+          1 - Phaser.Math.Clamp(d / STALKER.triggerRadius, 0, 1),
+        );
+      } else if (state === StalkerState.Lunging) {
+        fear = 1;
+      }
+    }
+    return Phaser.Math.Clamp(fear, 0, 1);
+  }
+
+  /** Applies the current fear level to the heartbeat cue and camera vignette. */
+  private updateFear(fear: number, time: number): void {
+    this.audio.updateHeartbeat(fear, time);
+    const v = this.vignetteFilter;
+    if (v) {
+      v.strength =
+        FEAR.vignetteMinStrength +
+        fear * (FEAR.vignetteMaxStrength - FEAR.vignetteMinStrength);
+      v.radius =
+        FEAR.vignetteMaxRadius -
+        fear * (FEAR.vignetteMaxRadius - FEAR.vignetteMinRadius);
+    }
+  }
+
+  /** A brief distortion punch on the barrel filter — sells a lunge/attack as
+   *  a physical jolt, not just a sound and a flash. No-ops without WebGL. */
+  private pulseBarrel(peak: number, durationMs: number): void {
+    const filter = this.barrelFilter;
+    if (!filter) return;
+    this.tweens.add({
+      targets: filter,
+      amount: 1 + peak,
+      duration: durationMs * 0.3,
+      yoyo: true,
+      hold: durationMs * 0.15,
+      ease: "Sine.InOut",
+      onComplete: () => {
+        filter.amount = 1;
+      },
+    });
+  }
+
+  /**
+   * The Stalker (see StalkerAI): freezes solid whenever the player has line
+   * of sight on it, creeps closer the instant they look away, and lunges if
+   * it closes to grab range while unseen. Only active during Ambient.
+   */
+  private updateStalker(deltaMs: number, playerPos: Vec2): void {
+    const monster = this.stalkerMonster;
+    if (!monster) return;
+
+    const playerTile = this.playerTile();
+    const stalkerTile = {
+      x: Math.floor(monster.x / TILE_SIZE),
+      y: Math.floor(monster.y / TILE_SIZE),
+    };
+    const tileDist = Phaser.Math.Distance.Between(
+      playerTile.x,
+      playerTile.y,
+      stalkerTile.x,
+      stalkerTile.y,
+    );
+    const withinVisRange =
+      tileDist <= VISIBILITY.revealRadiusTiles + STALKER.visRadiusBonusTiles;
+    const seen =
+      withinVisRange &&
+      this.visibility.hasLineOfSight(
+        playerTile.x,
+        playerTile.y,
+        stalkerTile.x,
+        stalkerTile.y,
+        (x, y) => this.isWallTile(x, y),
+      );
+
+    const prevState = this.stalkerAI.current;
+    const state = this.stalkerAI.update(deltaMs / 1000, {
+      seen,
+      distanceToPlayer: monster.distanceTo(playerPos),
+    });
+
+    switch (state) {
+      case StalkerState.Lurking:
+        monster.setVisible(true);
+        monster.resumeIdle();
+        monster.freeze();
+        break;
+      case StalkerState.Creeping:
+        monster.setVisible(true);
+        monster.resumeIdle();
+        monster.pursue(playerPos, STALKER.creepSpeed);
+        break;
+      case StalkerState.Frozen:
+        monster.setVisible(true);
+        monster.freezeStill();
+        break;
+      case StalkerState.Lunging:
+        monster.setVisible(true);
+        if (prevState !== StalkerState.Lunging)
+          this.onStalkerLunge(monster, playerPos);
+        monster.freeze();
+        break;
+      case StalkerState.Retreating:
+        if (prevState !== StalkerState.Retreating)
+          this.onStalkerRetreat(monster);
+        monster.freeze();
+        break;
+    }
+  }
+
+  /** The scare beat: it snaps into the player's face, screams, and either
+   *  kills (lethal difficulties) or just leaves the player rattled. */
+  private onStalkerLunge(monster: Monster, playerPos: Vec2): void {
+    const angle = Math.random() * Math.PI * 2;
+    monster.setPosition(
+      playerPos.x + Math.cos(angle) * STALKER.lungeOffset,
+      playerPos.y + Math.sin(angle) * STALKER.lungeOffset,
+    );
+    monster.resumeIdle();
+
+    const pan = Phaser.Math.Clamp((monster.x - this.player.x) / 200, -1, 1);
+    this.audio.scream(0.85, pan);
+    this.cameras.main.flash(260, 160, 0, 0);
+    this.cameras.main.shake(420, 0.018);
+    this.pulseBarrel(0.9, 320);
+
+    if (this.lethal) this.onDeath();
+  }
+
+  /** Fades the Stalker out, relocates it off-stage, and fades it back in —
+   *  it should never look like it walked away. */
+  private onStalkerRetreat(monster: Monster): void {
+    this.tweens.add({
+      targets: monster,
+      alpha: 0,
+      duration: 300,
+      onComplete: () => {
+        this.relocateStalker();
+        this.tweens.add({ targets: monster, alpha: 1, duration: 300 });
+      },
+    });
+  }
+
+  /** Hides and stops the Stalker outside the Ambient phase (the Pursuit
+   *  finale is the one threat that should own the screen). */
+  private hideStalker(): void {
+    const monster = this.stalkerMonster;
+    if (!monster) return;
+    monster.freeze();
+    monster.setVisible(false);
+  }
+
+  /** Random ambient power-flicker beat — the lights gutter and the room goes
+   *  briefly dark, no monster required. Pure atmosphere. */
+  private updateBlackout(time: number): void {
+    if (this.nextBlackoutAt < 0) {
+      this.nextBlackoutAt =
+        time +
+        Phaser.Math.Between(
+          BLACKOUT_EVENT.minIntervalMs,
+          BLACKOUT_EVENT.maxIntervalMs,
+        );
+      return;
+    }
+    if (time < this.nextBlackoutAt) return;
+    this.nextBlackoutAt =
+      time +
+      Phaser.Math.Between(
+        BLACKOUT_EVENT.minIntervalMs,
+        BLACKOUT_EVENT.maxIntervalMs,
+      );
+    this.triggerBlackout();
+  }
+
+  private triggerBlackout(): void {
+    this.audio.staticBurst(0.32);
+    const cam = this.cameras.main;
+    const veil = this.add
+      .rectangle(0, 0, cam.width, cam.height, 0x000000, 0)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(1500);
+    this.tweens.add({
+      targets: veil,
+      alpha: { from: 0, to: 0.94 },
+      duration: BLACKOUT_EVENT.durationMs * 0.4,
+      yoyo: true,
+      hold: BLACKOUT_EVENT.durationMs * 0.2,
+      onComplete: () => veil.destroy(),
+    });
+  }
+
   /** Robustly restart the scene once (Space or the auto-timer, whichever first). */
   private scheduleRestart(delayMs: number): void {
     const go = () => {
@@ -679,6 +1038,22 @@ export class MainScene extends Phaser.Scene {
     this.input.keyboard?.once("keydown-SPACE", go);
   }
 
+  /** Drops the heartbeat and eases the vignette back to its calm baseline —
+   *  called the instant a run ends so the outcome banner is never fighting
+   *  a screen still darkened from the moment before it. */
+  private relaxFear(): void {
+    this.audio.updateHeartbeat(0, 0);
+    const v = this.vignetteFilter;
+    if (!v) return;
+    this.tweens.add({
+      targets: v,
+      strength: FEAR.vignetteMinStrength,
+      radius: FEAR.vignetteMaxRadius,
+      duration: 500,
+      ease: "Sine.Out",
+    });
+  }
+
   /** Milliseconds elapsed in the current run, for stats accumulation. */
   private elapsedRunMs(): number {
     return Math.max(0, this.time.now - this.runStartedAt);
@@ -687,6 +1062,7 @@ export class MainScene extends Phaser.Scene {
   private onEscape(): void {
     if (this.ended) return;
     this.ended = true;
+    this.relaxFear();
     recordEscape(this.elapsedRunMs());
     // Unlock and advance to the next official level.
     const wasLast = this.levelIndex >= LAST_LEVEL_INDEX;
@@ -721,6 +1097,7 @@ export class MainScene extends Phaser.Scene {
   private onFall(): void {
     if (this.ended) return;
     this.ended = true;
+    this.relaxFear();
     recordFall(this.elapsedRunMs());
     this.player.setVelocity(0, 0);
     this.cameras.main.shake(400, 0.01);
@@ -737,6 +1114,7 @@ export class MainScene extends Phaser.Scene {
   private onDeath(): void {
     if (this.ended) return;
     this.ended = true;
+    this.relaxFear();
     recordDeath(this.elapsedRunMs());
     this.player.setVelocity(0, 0);
     this.audio.roar();
@@ -753,8 +1131,14 @@ export class MainScene extends Phaser.Scene {
 
   /** Occasional "you can hear it" beat while the monster lurks nearby — fires
    *  more often the closer the player gets to the exit. */
-  private presenceCue(time: number, playerPos: Vec2, exitProximity: number): void {
-    const cooldown = DREAD.cueCooldownMs * (1 - exitProximity * (1 - EXIT_DREAD.minIntervalScale));
+  private presenceCue(
+    time: number,
+    playerPos: Vec2,
+    exitProximity: number,
+  ): void {
+    const cooldown =
+      DREAD.cueCooldownMs *
+      (1 - exitProximity * (1 - EXIT_DREAD.minIntervalScale));
     if (time - this.lastCueAt < cooldown) return;
     const nearest = Math.min(
       ...this.monsters.map((m) => m.distanceTo(playerPos)),
@@ -798,7 +1182,8 @@ export class MainScene extends Phaser.Scene {
     if (this.jumpscareNextAt < 0) {
       // First roll after level load — don't scare the player immediately.
       this.jumpscareNextAt =
-        time + Phaser.Math.Between(JUMPSCARE.minIntervalMs, JUMPSCARE.maxIntervalMs);
+        time +
+        Phaser.Math.Between(JUMPSCARE.minIntervalMs, JUMPSCARE.maxIntervalMs);
       return;
     }
 
@@ -806,12 +1191,14 @@ export class MainScene extends Phaser.Scene {
       const dist = this.jumpscareMonster.distanceTo(playerPos);
       if (
         !this.jumpscareAttacked &&
+        !this.jumpscareIsPeek &&
         this.difficulty !== "easy" &&
         dist <= JUMPSCARE.attackRadius
       ) {
         this.jumpscareAttacked = true;
         this.audio.snarl();
         this.cameras.main.flash(220, 120, 0, 0);
+        this.pulseBarrel(0.5, 240);
         this.jumpscareMonster.pursue(playerPos, this.pursuitSpeed * 1.4);
         if (this.lethal) this.onDeath();
         // Despawn shortly after the attack regardless of outcome.
@@ -825,12 +1212,15 @@ export class MainScene extends Phaser.Scene {
     this.trySpawnJumpscare(time, exitProximity);
     const scale = 1 - exitProximity * (1 - EXIT_DREAD.minIntervalScale);
     const interval =
-      Phaser.Math.Between(JUMPSCARE.minIntervalMs, JUMPSCARE.maxIntervalMs) * scale;
+      Phaser.Math.Between(JUMPSCARE.minIntervalMs, JUMPSCARE.maxIntervalMs) *
+      scale;
     this.jumpscareNextAt = time + interval;
   }
 
   /** Try a handful of candidate tiles in view range and spawn on the first
-   *  one that's walkable and actually visible to the player. */
+   *  one that's walkable and actually visible to the player. A fraction of
+   *  encounters are a silent "peek" — a silhouette that never approaches or
+   *  attacks and vanishes fast, unsettling precisely because nothing happens. */
   private trySpawnJumpscare(time: number, exitProximity: number): void {
     const origin = this.playerTile();
     const isWall = (x: number, y: number) => this.isWallTile(x, y);
@@ -842,7 +1232,12 @@ export class MainScene extends Phaser.Scene {
       );
       const tx = Math.round(origin.x + Math.cos(angle) * dist);
       const ty = Math.round(origin.y + Math.sin(angle) * dist);
-      if (tx < 0 || ty < 0 || tx >= this.level.width || ty >= this.level.height) {
+      if (
+        tx < 0 ||
+        ty < 0 ||
+        tx >= this.level.width ||
+        ty >= this.level.height
+      ) {
         continue;
       }
       if (this.isWallTile(tx, ty) || this.isHoleTile(tx, ty)) continue;
@@ -858,20 +1253,30 @@ export class MainScene extends Phaser.Scene {
         [],
         DEFAULT_MONSTER_TUNING,
         this.roleTint(MONSTER_TINT.jumpscare),
+        { noWalkCycle: true },
       );
       monster.setDepth(90);
       monster.setAlpha(0);
       this.physics.add.collider(monster, this.walls);
-      this.tweens.add({ targets: monster, alpha: 1, duration: 220, ease: "Sine.Out" });
+      this.tweens.add({
+        targets: monster,
+        alpha: 1,
+        duration: 220,
+        ease: "Sine.Out",
+      });
 
       this.jumpscareMonster = monster;
       this.jumpscareAttacked = false;
-      const visibleMs = Phaser.Math.Between(
-        JUMPSCARE.minVisibleMs,
-        JUMPSCARE.maxVisibleMs,
-      );
+      this.jumpscareIsPeek = Math.random() < JUMPSCARE.peekChance;
+      const visibleMs = this.jumpscareIsPeek
+        ? JUMPSCARE.peekVisibleMs
+        : Phaser.Math.Between(JUMPSCARE.minVisibleMs, JUMPSCARE.maxVisibleMs);
       this.jumpscareDespawnAt = time + visibleMs;
-      this.audio.shriek(0.3 + exitProximity * 0.3);
+      if (this.jumpscareIsPeek) {
+        this.audio.murmur(0.22 + exitProximity * 0.2);
+      } else {
+        this.audio.shriek(0.3 + exitProximity * 0.3);
+      }
       return;
     }
   }
@@ -1000,7 +1405,7 @@ export class MainScene extends Phaser.Scene {
 
     if (!this.ended) this.updateAlmondWater(time);
 
-    this.updateAi(time);
+    this.updateAi(time, delta);
 
     if (!this.ended) {
       const anomaly = this.process.update(time);

@@ -29,6 +29,11 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
   private walkFrame = false;
   private walkTimer = 0;
   private moving = false;
+  /** When true, the leg-stride frame never swaps while moving — it glides
+   *  rather than walks. Used by the Stalker: it shouldn't look like it's
+   *  ambling, it should look like it's simply *closer* than it was. */
+  private readonly noWalkCycle: boolean;
+  private readonly idleTween: Phaser.Tweens.Tween;
 
   constructor(
     scene: Phaser.Scene,
@@ -39,6 +44,7 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
     /** Per-role tint (see MONSTER_TINT) so pursuer/lurker/jump-scare read as
      *  distinct threats at a glance. */
     tint?: number,
+    opts?: { noWalkCycle?: boolean },
   ) {
     super(scene, x, y, TEXTURES.monster);
     scene.add.existing(this);
@@ -47,6 +53,7 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
     this.tuning = tuning;
     this.waypoints = waypoints;
     this.spawnPoint = { x, y };
+    this.noWalkCycle = opts?.noWalkCycle ?? false;
     if (tint !== undefined) this.setTint(tint);
 
     this.setOrigin(0.5, 0.5);
@@ -59,7 +66,7 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
 
     // Slow, uneven hunch-and-lurch — unsettling rather than a mechanical
     // walk cycle, and independent of the physics body.
-    scene.tweens.add({
+    this.idleTween = scene.tweens.add({
       targets: this,
       scaleY: 0.9,
       scaleX: 1.06,
@@ -70,6 +77,19 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
     });
   }
 
+  /** Stop dead — including the idle hunch-and-lurch tween — so it reads as
+   *  perfectly, unnaturally still (the Stalker while watched). */
+  freezeStill(): void {
+    this.freeze();
+    this.idleTween.pause();
+    this.setScale(1, 1);
+  }
+
+  /** Resume the ambient hunch-and-lurch after {@link freezeStill}. */
+  resumeIdle(): void {
+    if (this.idleTween.isPaused()) this.idleTween.resume();
+  }
+
   private pos(): Vec2 {
     return { x: this.x, y: this.y };
   }
@@ -78,7 +98,7 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
    *  driven every frame regardless of which behaviour is currently active. */
   override preUpdate(time: number, delta: number): void {
     super.preUpdate(time, delta);
-    if (!this.moving) return;
+    if (!this.moving || this.noWalkCycle) return;
     this.walkTimer += delta;
     if (this.walkTimer >= WALK_CYCLE_MS) {
       this.walkTimer -= WALK_CYCLE_MS;
@@ -89,7 +109,9 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
 
   private applyTexture(): void {
     if (this.facingBack) {
-      this.setTexture(this.walkFrame ? TEXTURES.monsterBackWalk : TEXTURES.monsterBack);
+      this.setTexture(
+        this.walkFrame ? TEXTURES.monsterBackWalk : TEXTURES.monsterBack,
+      );
     } else {
       this.setTexture(this.walkFrame ? TEXTURES.monsterWalk : TEXTURES.monster);
     }
@@ -124,7 +146,11 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
       target = this.waypoints[this.waypointIndex]!;
     }
     this.drive(
-      seekVelocity(this.pos(), target, this.tuning.patrolSpeed * speedMultiplier),
+      seekVelocity(
+        this.pos(),
+        target,
+        this.tuning.patrolSpeed * speedMultiplier,
+      ),
     );
   }
 
