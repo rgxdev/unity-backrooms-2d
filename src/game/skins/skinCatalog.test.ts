@@ -13,6 +13,17 @@ describe("SKINS", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it("gives every skin a visually distinct palette + accessory combo", () => {
+    // Regression guard: skins previously only varied shirt/pants, which read
+    // as near-identical at the sprite's small on-screen size. Every skin
+    // must now differ in more than one channel so its generated texture is
+    // unmistakably its own.
+    const signatures = SKINS.map(
+      (s) => `${s.palette.hair}|${s.palette.shirt}|${s.accessory}`,
+    );
+    expect(new Set(signatures).size).toBe(signatures.length);
+  });
+
   it("includes an always-unlocked default skin", () => {
     const def = getSkin(DEFAULT_SKIN_ID);
     expect(def.unlockLevel).toBeUndefined();

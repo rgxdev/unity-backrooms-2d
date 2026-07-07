@@ -324,10 +324,16 @@ export class PreloadScene extends Phaser.Scene {
         for (let x = 0; x <= t; x += 8) this.px(g, c.accent, x, 0, 1, t, 0.5);
         break;
       case "hazard":
-        // A low hazard-tape band of alternating diagonal-cut stripes.
-        this.px(g, c.wallShade, 0, t - 11, t, 7, 0.9);
-        for (let x = -6; x < t; x += 6) {
-          this.px(g, c.accent, x, t - 11, 3, 7, 0.95);
+        // Two hazard-tape bands (top + bottom) of alternating diagonal-cut
+        // stripes — matches the full-face coverage every other style's
+        // pattern has, so scorched wall mass between the bands still reads
+        // as a solid, patterned surface instead of a near-black void with
+        // one thin stripe floating in it.
+        for (const by of [4, t - 11]) {
+          this.px(g, c.wallShade, 0, by, t, 7, 0.9);
+          for (let x = -6; x < t; x += 6) {
+            this.px(g, c.accent, x, by, 3, 7, 0.95);
+          }
         }
         break;
     }

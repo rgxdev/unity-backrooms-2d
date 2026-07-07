@@ -15,11 +15,24 @@ export interface PlayerPalette {
   pantsShade: number;
 }
 
+/** Small silhouette add-on drawn on top of the base sprite (see `makePlayer`
+ *  in PreloadScene) — gives every skin a distinguishing shape, not just a
+ *  different shirt/pants hue, so they read as clearly different textures
+ *  even at the sprite's small on-screen size. */
+export type AccessoryKind =
+  | "none"
+  | "cap"
+  | "hood"
+  | "goggles"
+  | "mask"
+  | "bandana";
+
 export interface SkinDefinition {
   id: string;
   name: string;
   description: string;
   palette: PlayerPalette;
+  accessory: AccessoryKind;
   /** Official level index that must be escaped to unlock this skin.
    *  Undefined for the default skin, which is always available. */
   unlockLevel?: number;
@@ -45,15 +58,17 @@ function tone(hex: number, factor: number, add: number): number {
 const hi = (hex: number): number => tone(hex, 1, 30);
 const shade = (hex: number): number => tone(hex, 0.72, 0);
 
-/** Build a full palette from a shirt/pants base colour, reusing the default
- *  skin tone and hair so reward skins read as different survival gear, not
- *  a different person. */
-function gearPalette(shirt: number, pants: number): PlayerPalette {
+/** Build a full palette from a shirt/pants/hair base colour, reusing the
+ *  default skin tone so reward skins still read as the same person in
+ *  different gear — but with their own hair colour and accessory (see
+ *  `AccessoryKind`) so each skin is unmistakably its own texture rather
+ *  than a near-identical recolour. */
+function gearPalette(shirt: number, pants: number, hair: number): PlayerPalette {
   return {
     skin: COLORS.playerSkin,
     skinShade: COLORS.playerSkinShade,
-    hair: COLORS.playerHair,
-    hairHi: COLORS.playerHairHi,
+    hair,
+    hairHi: hi(hair),
     shirt,
     shirtHi: hi(shirt),
     shirtShade: shade(shirt),
@@ -82,40 +97,46 @@ export const SKINS: readonly SkinDefinition[] = [
       pants: COLORS.playerPants,
       pantsShade: COLORS.playerPantsShade,
     },
+    accessory: "none",
   },
   {
     id: "lobby-khaki",
     name: "Lobby Veteran",
     description: "Faded khaki fatigues — earned by escaping Level 0.",
-    palette: gearPalette(0x8a8a4a, 0x4a462c),
+    palette: gearPalette(0x8a8a4a, 0x4a462c, 0x4a4028),
+    accessory: "cap",
     unlockLevel: 0,
   },
   {
     id: "concrete-grey",
     name: "Habitable Drifter",
     description: "Damp grey overalls — earned by escaping Level 1.",
-    palette: gearPalette(0x7a828c, 0x3a3f46),
+    palette: gearPalette(0x7a828c, 0x3a3f46, 0x2e3136),
+    accessory: "hood",
     unlockLevel: 1,
   },
   {
     id: "pipe-teal",
     name: "Pipe Dreamer",
     description: "Steam-stained teal coveralls — earned by escaping Level 2.",
-    palette: gearPalette(0x3f8f78, 0x24443a),
+    palette: gearPalette(0x3f8f78, 0x24443a, 0x1f3d34),
+    accessory: "goggles",
     unlockLevel: 2,
   },
   {
     id: "pool-cyan",
     name: "Poolrooms Wader",
     description: "Chlorine-bleached cyan wetsuit — earned by escaping Level 3.",
-    palette: gearPalette(0x4ab0c9, 0x1f5866),
+    palette: gearPalette(0x4ab0c9, 0x1f5866, 0x18404a),
+    accessory: "mask",
     unlockLevel: 3,
   },
   {
     id: "survivor-red",
     name: "Backrooms Survivor",
     description: "Hazard-red gear for those who outran Level 4.",
-    palette: gearPalette(0xc9503f, 0x5c2620),
+    palette: gearPalette(0xc9503f, 0x5c2620, 0x3a1f1a),
+    accessory: "bandana",
     unlockLevel: 4,
   },
 ];
