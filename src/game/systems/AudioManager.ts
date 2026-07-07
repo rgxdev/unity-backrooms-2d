@@ -196,7 +196,9 @@ export class AudioManager {
     this.humNodes = null;
   }
 
-  /** Electrical stutter — a light flickering overhead. */
+  /** Electrical stutter — a light flickering overhead. Pulse count and
+   *  timing are randomised each call so no two flickers sound alike — an
+   *  old dying tube stuttering unevenly, not a metronome. */
   flicker(): void {
     const ctx = this.context;
     if (!ctx || this.masterVolume <= 0) return;
@@ -205,16 +207,17 @@ export class AudioManager {
     osc.type = "square";
     osc.frequency.setValueAtTime(220, ctx.currentTime);
     const peak = Math.max(0.0001, 0.18 * this.masterVolume);
-    // Three short crackling pulses instead of one smooth tone.
-    for (let i = 0; i < 3; i++) {
-      const t = ctx.currentTime + i * 0.09;
+    const pulses = 2 + Math.floor(Math.random() * 4);
+    let t = ctx.currentTime;
+    for (let i = 0; i < pulses; i++) {
+      t += 0.05 + Math.random() * 0.08;
       gain.gain.setValueAtTime(0.0001, t);
       gain.gain.exponentialRampToValueAtTime(peak, t + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
     }
     osc.connect(gain).connect(ctx.destination);
     osc.start();
-    osc.stop(ctx.currentTime + 0.35);
+    osc.stop(t + 0.4);
   }
 
   /** A low, garbled murmur just at the edge of hearing — no one there.
@@ -295,6 +298,42 @@ export class AudioManager {
   staticBurst(intensity = 0.35): void {
     this.noiseBurst(0.22, intensity, 2600);
     this.tone(60, 0.25, intensity * 0.5, "sawtooth");
+  }
+
+  /** Harsh burst of TV static — the "static" ambient anomaly's crackle.
+   *  Broader-band and brighter than {@link staticBurst}'s power-gutter hiss;
+   *  reads as a signal dropping out, not the lights guttering. */
+  staticFuzz(): void {
+    this.noiseBurst(0.18, 0.3, 4200);
+    this.noiseBurst(0.12, 0.22, 900);
+  }
+
+  /** Far-off, muffled scream — something else is out there, always at a
+   *  random pan since it's never tied to a visible threat. Distinct from
+   *  {@link scream}'s close, loud "don't look away" grab: heavily filtered,
+   *  quieter, and drawn out instead of a sharp jolt. */
+  distantScream(pan = 0): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(900, ctx.currentTime);
+    filter.Q.value = 1.2;
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(240, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.3);
+    osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.9);
+    const peak = Math.max(0.0001, 0.28 * this.masterVolume);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.0);
+    osc.connect(filter).connect(gain);
+    this.connectOut(gain, ctx, pan);
+    osc.start();
+    osc.stop(ctx.currentTime + 1.05);
+    this.noiseBurst(0.5, 0.12, 1400, pan);
   }
 
   /** The Stalker's lunge: a ragged shriek-into-growl hybrid, close and wet —

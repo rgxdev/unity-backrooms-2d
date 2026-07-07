@@ -1,11 +1,24 @@
 /**
  * Background "process" that periodically fires a random ambient anomaly —
- * a flickering light, a distant whisper, a far-off thud — independent of the
- * monster director. Pure atmosphere: it never affects monster behaviour or
- * the win/lose state. Kept engine-independent (no Phaser types) so the
- * scheduling logic is unit testable in isolation, same as `MonsterDirector`.
+ * a flickering light, a distant whisper, a far-off thud, a scream out in the
+ * dark, a burst of TV static — independent of the monster director. Pure
+ * atmosphere: it never affects monster behaviour or the win/lose state. Kept
+ * engine-independent (no Phaser types) so the scheduling logic is unit
+ * testable in isolation, same as `MonsterDirector`.
+ *
+ * Duplicated entries weight the roll — flicker/whisper/thud stay the common
+ * beat, scream/static are rarer jolts.
  */
-export const ANOMALY_TYPES = ["flicker", "whisper", "thud"] as const;
+export const ANOMALY_TYPES = [
+  "flicker",
+  "flicker",
+  "whisper",
+  "whisper",
+  "thud",
+  "thud",
+  "scream",
+  "static",
+] as const;
 export type AnomalyType = (typeof ANOMALY_TYPES)[number];
 
 export interface ProcessDirectorConfig {

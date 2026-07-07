@@ -12,6 +12,7 @@ import {
   FLOOR_VARIANTS,
   JUMPSCARE,
   MONSTER_TINT,
+  OLDSCHOOL_FX,
   PATHFIND,
   PURSUIT_CATCH,
   SCENES,
@@ -148,6 +149,11 @@ export class MainScene extends Phaser.Scene {
   private vignetteFilter: SoftVignetteController | null = null;
   private barrelFilter: Phaser.Filters.Barrel | null = null;
 
+  /** Permanent oldschool CRT dressing — scanlines + jittered film grain. */
+  private scanlineOverlay: Phaser.GameObjects.TileSprite | null = null;
+  private grainOverlay: Phaser.GameObjects.TileSprite | null = null;
+  private nextGrainJitterAt = 0;
+
   /** Scattered Almond Water pickups still on the floor. */
   private almondBottles: Phaser.GameObjects.Image[] = [];
   private visionBoosted = false;
@@ -246,6 +252,7 @@ export class MainScene extends Phaser.Scene {
     this.spawnStalker();
     this.buildExit();
     this.buildPresenceOverlay();
+    this.buildOldschoolOverlay();
     this.buildFlashlightSystems();
     this.setupFilters();
     this.audio = new AudioManager(this.sound);
@@ -292,6 +299,9 @@ export class MainScene extends Phaser.Scene {
     this.nextBlackoutAt = -1;
     this.vignetteFilter = null;
     this.barrelFilter = null;
+    this.scanlineOverlay = null;
+    this.grainOverlay = null;
+    this.nextGrainJitterAt = 0;
     this.runStartedAt = 0;
     this.almondBottles = [];
     this.visionBoosted = false;
@@ -965,6 +975,12 @@ export class MainScene extends Phaser.Scene {
     if (this.anomalyOverlay?.active) {
       this.anomalyOverlay.setSize(cam.width, cam.height);
     }
+    if (this.scanlineOverlay?.active) {
+      this.scanlineOverlay.setSize(cam.width, cam.height);
+    }
+    if (this.grainOverlay?.active) {
+      this.grainOverlay.setSize(cam.width, cam.height);
+    }
     if (this.hotbarBg?.active) {
       const x = 14;
       const y = cam.height - 40;
@@ -990,6 +1006,49 @@ export class MainScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(901);
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize);
+  }
+
+  /** Permanent oldschool CRT dressing — screen-space scanlines + a jittered
+   *  grain layer, above the game world and monsters but under the fear
+   *  overlays / blackout veil / HUD so it never fights their readability. */
+  private buildOldschoolOverlay(): void {
+    const cam = this.cameras.main;
+    this.scanlineOverlay = this.add
+      .tileSprite(0, 0, cam.width, cam.height, TEXTURES.scanlines)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setAlpha(OLDSCHOOL_FX.scanlineAlpha)
+      .setDepth(850);
+    this.grainOverlay = this.add
+      .tileSprite(0, 0, cam.width, cam.height, TEXTURES.grain)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setAlpha(OLDSCHOOL_FX.grainAlpha)
+      .setBlendMode(Phaser.BlendModes.SCREEN)
+      .setDepth(851);
+  }
+
+  /** Resamples the grain noise offset on an interval — a cheap way to make
+   *  the film-grain crawl without redrawing anything every frame. */
+  private updateOldschoolGrain(time: number): void {
+    if (!this.grainOverlay || time < this.nextGrainJitterAt) return;
+    this.nextGrainJitterAt = time + OLDSCHOOL_FX.grainJitterMs;
+    this.grainOverlay.tilePositionX = Math.random() * 64;
+    this.grainOverlay.tilePositionY = Math.random() * 64;
+  }
+
+  /** Retro "static" glitch — a few rapid overlay strobes plus a tiny camera
+   *  jolt, selling a signal-loss stutter distinct from {@link triggerBlackout}'s
+   *  full dropout or the flicker's slow gutter. */
+  private triggerGlitch(): void {
+    this.cameras.main.shake(OLDSCHOOL_FX.glitchMs, 0.004);
+    this.tweens.add({
+      targets: this.anomalyOverlay,
+      alpha: { from: 0, to: 0.4 },
+      duration: 35,
+      yoyo: true,
+      repeat: 6,
+    });
   }
 
   private playerTile(): Vec2 {
@@ -1786,6 +1845,7 @@ export class MainScene extends Phaser.Scene {
     if (!this.ended) this.updateFlashlightBeam(time);
 
     this.updateAi(time, delta);
+    this.updateOldschoolGrain(time);
 
     if (!this.ended) {
       const anomaly = this.process.update(time);
@@ -1817,6 +1877,22 @@ export class MainScene extends Phaser.Scene {
       case "thud":
         this.audio.thud();
         this.cameras.main.shake(140, 0.003);
+        break;
+      case "scream": {
+        const pan = Math.random() * 2 - 1;
+        this.audio.distantScream(pan);
+        this.tweens.add({
+          targets: this.presenceOverlay,
+          alpha: { from: 0, to: 0.35 },
+          duration: 220,
+          yoyo: true,
+          ease: "Sine.InOut",
+        });
+        break;
+      }
+      case "static":
+        this.audio.staticFuzz();
+        this.triggerGlitch();
         break;
     }
   }

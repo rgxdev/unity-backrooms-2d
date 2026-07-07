@@ -157,6 +157,8 @@ export class PreloadScene extends Phaser.Scene {
       () => this.makeMonster(TEXTURES.monsterBackWalk, "back", true),
       () => this.makeHole(TEXTURES.hole),
       () => this.makeRubble(TEXTURES.rubble),
+      () => this.makeScanlines(TEXTURES.scanlines),
+      () => this.makeGrain(TEXTURES.grain),
     );
     return tasks;
   }
@@ -976,5 +978,36 @@ export class PreloadScene extends Phaser.Scene {
 
     g.generateTexture(key, t, t);
     g.destroy();
+  }
+
+  /** Retro CRT scanline tile — one dark row every 4px. Tiled full-screen by
+   *  MainScene at a low alpha for permanent oldschool monitor texture. */
+  private makeScanlines(key: string): void {
+    const size = 4;
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0x000000, 0.55);
+    g.fillRect(0, 0, size, 1);
+    g.generateTexture(key, size, size);
+    g.destroy();
+  }
+
+  /** Film-grain noise tile — true per-pixel randomness (not drawn shapes) so
+   *  it reads as static rather than a repeating pattern once tiled and
+   *  jittered by MainScene. */
+  private makeGrain(key: string): void {
+    const size = 64;
+    const canvas = this.textures.createCanvas(key, size, size);
+    if (!canvas) return;
+    const ctx = canvas.getContext();
+    const image = ctx.createImageData(size, size);
+    for (let i = 0; i < image.data.length; i += 4) {
+      const v = Math.random() * 255;
+      image.data[i] = v;
+      image.data[i + 1] = v;
+      image.data[i + 2] = v;
+      image.data[i + 3] = 60 + Math.random() * 140;
+    }
+    ctx.putImageData(image, 0, 0);
+    canvas.refresh();
   }
 }

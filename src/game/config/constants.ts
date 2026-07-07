@@ -128,11 +128,12 @@ export const JUMPSCARE = {
   peekVisibleMs: 900,
 } as const;
 
-/** Ambient environmental "process" pacing — flickers/whispers/thuds that are
- *  pure atmosphere, independent of the monster director. */
+/** Ambient environmental "process" pacing — flickers/whispers/thuds/screams
+ *  that are pure atmosphere, independent of the monster director. Tightened
+ *  interval keeps something creepy happening almost constantly. */
 export const ANOMALY = {
-  minIntervalMs: 9000,
-  maxIntervalMs: 18000,
+  minIntervalMs: 5000,
+  maxIntervalMs: 10000,
 } as const;
 
 /** Monster activity ramps up as the player nears the exit. */
@@ -195,9 +196,22 @@ export const FEAR = {
 /** Random ambient power-flicker beat: the lights gutter and the fog swallows
  *  the room for a moment — pure atmosphere, no monster required. */
 export const BLACKOUT_EVENT = {
-  minIntervalMs: 16000,
-  maxIntervalMs: 28000,
-  durationMs: 260,
+  minIntervalMs: 10000,
+  maxIntervalMs: 18000,
+  durationMs: 320,
+} as const;
+
+/** Retro CRT/VHS dressing — a permanent low-key scanline + grain overlay,
+ *  plus the glitch strobe kicked off by the "static" ambient anomaly. Pure
+ *  cosmetic texture; never affects gameplay or readability. */
+export const OLDSCHOOL_FX = {
+  scanlineAlpha: 0.16,
+  grainAlpha: 0.05,
+  /** How often the grain noise resamples to a new offset (ms) — a cheap
+   *  flicker instead of animating every frame. */
+  grainJitterMs: 70,
+  /** Duration of the camera+overlay glitch strobe from a "static" anomaly. */
+  glitchMs: 220,
 } as const;
 
 /** Never generate more monsters than this, whatever the difficulty/index. */
@@ -544,6 +558,8 @@ export const TEXTURES = {
   monsterBackWalk: "tex-monster-back-walk",
   hole: "tex-hole",
   rubble: "tex-rubble",
+  scanlines: "tex-scanlines",
+  grain: "tex-grain",
 } as const;
 
 /**
