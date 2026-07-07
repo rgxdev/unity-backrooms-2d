@@ -34,6 +34,11 @@ import { DEFAULT_MONSTER_TUNING } from "@/game/ai/types";
 import type { Vec2 } from "@/game/ai/steering";
 import { getSettings } from "@/lib/settings-store";
 import { completeLevel, getProgress } from "@/lib/progress-store";
+import {
+  DEFAULT_SKIN_ID,
+  resolveEquippedSkinId,
+  SKINS,
+} from "@/game/skins/skinCatalog";
 
 const FOG_ALPHA: Record<number, number> = {
   [TileVisibility.Unseen]: 1,
@@ -58,6 +63,7 @@ export class MainScene extends Phaser.Scene {
   private theme!: LevelTheme;
   private difficulty: Difficulty = "easy";
   private levelIndex = 0;
+  private skinId: string = DEFAULT_SKIN_ID;
   private lethal = false;
   private pursuitSpeed = DIFFICULTY_CONFIG.easy.pursuitSpeed;
   /** True once the level has resolved (escaped or died); freezes gameplay. */
@@ -95,6 +101,7 @@ export class MainScene extends Phaser.Scene {
     const settings = getSettings();
     const progress = getProgress();
     this.levelIndex = progress.currentLevel;
+    this.skinId = resolveEquippedSkinId(progress.unlockedSkins, settings.skinId);
     this.difficulty = settings.difficulty;
     const cfg = DIFFICULTY_CONFIG[this.difficulty];
     this.lethal = cfg.lethal;
@@ -274,6 +281,7 @@ export class MainScene extends Phaser.Scene {
       this,
       spawn.x * TILE_SIZE + TILE_SIZE / 2,
       spawn.y * TILE_SIZE + TILE_SIZE / 2,
+      this.skinId,
     );
     this.player.setDepth(100);
     this.controller = new PlayerController(this, this.player);
@@ -468,12 +476,19 @@ export class MainScene extends Phaser.Scene {
     this.ended = true;
     // Unlock and advance to the next official level.
     const wasLast = this.levelIndex >= LAST_LEVEL_INDEX;
+    const previouslyUnlockedSkins = getProgress().unlockedSkins;
     completeLevel(this.levelIndex);
+    const rewardSkin = SKINS.find(
+      (skin) =>
+        skin.unlockLevel === this.levelIndex &&
+        !previouslyUnlockedSkins.includes(skin.id),
+    );
     const next = getOfficialLevel(this.levelIndex + 1);
     const heading = wasLast ? "BACKROOMS BEZWUNGEN" : "ENTKOMMEN";
-    const sub = wasLast
+    let sub = wasLast
       ? "Du hast alle Level überlebt."
       : `Du bist gerade so entkommen — weiter zu ${next.name}.`;
+    if (rewardSkin) sub += `\nNeuer Skin freigeschaltet: ${rewardSkin.name}!`;
     this.showBanner(heading, sub, "#9dffc0", 0x02040a);
     this.scheduleRestart(2800);
   }

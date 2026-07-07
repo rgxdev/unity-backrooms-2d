@@ -30,7 +30,6 @@ export default function MainMenu() {
         </Link>
         <Link href="/skins" className="menu-btn">
           Skin Selection
-          <span className="tag">soon</span>
         </Link>
         <Link href="/credits" className="menu-btn">
           Credits

@@ -5,6 +5,7 @@ import {
 } from "@/lib/schemas/progress";
 import { readJson, writeJson } from "@/lib/storage";
 import { LAST_LEVEL_INDEX } from "@/game/levels/officialLevels";
+import { SKINS } from "@/game/skins/skinCatalog";
 
 const STORAGE_KEY = "backrooms.progress.v1";
 
@@ -46,8 +47,9 @@ export function selectLevel(index: number): Progress {
 }
 
 /**
- * Mark a level as beaten: unlock the next one and make it current. Clamped to
- * the last official level.
+ * Mark a level as beaten: unlock the next one and make it current, and
+ * unlock that level's reward skin if it has one. Clamped to the last
+ * official level.
  */
 export function completeLevel(index: number): Progress {
   hydrate();
@@ -55,5 +57,9 @@ export function completeLevel(index: number): Progress {
   const unlocked = Array.from(new Set([...current.unlocked, next])).sort(
     (a, b) => a - b,
   );
-  return commit({ ...current, currentLevel: next, unlocked });
+  const rewardSkin = SKINS.find((skin) => skin.unlockLevel === index);
+  const unlockedSkins = rewardSkin
+    ? Array.from(new Set([...current.unlockedSkins, rewardSkin.id]))
+    : current.unlockedSkins;
+  return commit({ ...current, currentLevel: next, unlocked, unlockedSkins });
 }

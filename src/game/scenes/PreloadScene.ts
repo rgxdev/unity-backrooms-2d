@@ -3,10 +3,12 @@ import {
   COLORS,
   MONSTER,
   PLAYER,
+  playerTextureKey,
   SCENES,
   TEXTURES,
   TILE_SIZE,
 } from "@/game/config/constants";
+import { SKINS, type PlayerPalette } from "@/game/skins/skinCatalog";
 
 type Facing = "front" | "back";
 
@@ -38,10 +40,12 @@ export class PreloadScene extends Phaser.Scene {
     this.makeCarpet(TEXTURES.floorAlt, 1);
     this.makeWall(TEXTURES.wall);
     this.makeWallCrack(TEXTURES.wallCrack);
-    this.makePlayer(TEXTURES.player, "front", false);
-    this.makePlayer(TEXTURES.playerWalk, "front", true);
-    this.makePlayer(TEXTURES.playerBack, "back", false);
-    this.makePlayer(TEXTURES.playerBackWalk, "back", true);
+    for (const skin of SKINS) {
+      this.makePlayer(playerTextureKey(skin.id, "front", false), "front", false, skin.palette);
+      this.makePlayer(playerTextureKey(skin.id, "front", true), "front", true, skin.palette);
+      this.makePlayer(playerTextureKey(skin.id, "back", false), "back", false, skin.palette);
+      this.makePlayer(playerTextureKey(skin.id, "back", true), "back", true, skin.palette);
+    }
     this.makeMonster(TEXTURES.monster, "front", false);
     this.makeMonster(TEXTURES.monsterWalk, "front", true);
     this.makeMonster(TEXTURES.monsterBack, "back", false);
@@ -254,7 +258,12 @@ export class PreloadScene extends Phaser.Scene {
    * walking toward it. `stride` offsets the legs into a mid-step pose for
    * the second walk-cycle frame.
    */
-  private makePlayer(key: string, facing: Facing, stride: boolean): void {
+  private makePlayer(
+    key: string,
+    facing: Facing,
+    stride: boolean,
+    palette: PlayerPalette,
+  ): void {
     const s = PLAYER.size;
     const g = this.make.graphics({ x: 0, y: 0 }, false);
 
@@ -267,41 +276,41 @@ export class PreloadScene extends Phaser.Scene {
     g.fillEllipse(s / 2, s - 1, s - 4, 3);
 
     // Hair cap, rounded.
-    this.rr(g, COLORS.playerHair, 3, 1, s - 6, 5, 1);
-    this.px(g, COLORS.playerHairHi, 4, 1, s - 8, 1, 0.8);
+    this.rr(g, palette.hair, 3, 1, s - 6, 5, 1);
+    this.px(g, palette.hairHi, 4, 1, s - 8, 1, 0.8);
 
     if (facing === "front") {
       // Face with a shaded right cheek — soft two-tone blend.
-      this.rr(g, COLORS.playerSkin, 3, 5, s - 6, 4, 1);
-      this.px(g, COLORS.playerSkinShade, s - 6, 6, 2, 3, 0.8);
+      this.rr(g, palette.skin, 3, 5, s - 6, 4, 1);
+      this.px(g, palette.skinShade, s - 6, 6, 2, 3, 0.8);
       // Eyes.
       this.px(g, COLORS.playerOutline, 5, 7, 1, 1);
       this.px(g, COLORS.playerOutline, s - 6, 7, 1, 1);
     } else {
       // Back of the head: hair covers where the face would be, plus a
       // centre parting seam.
-      this.rr(g, COLORS.playerHair, 3, 5, s - 6, 4, 1);
+      this.rr(g, palette.hair, 3, 5, s - 6, 4, 1);
       this.px(g, COLORS.playerOutline, s / 2 - 0.5, 5, 1, 4, 0.5);
     }
 
     // Shirt torso + arms, shaded on the right, highlighted on the left.
-    this.rr(g, COLORS.playerShirt, 2, 9, s - 4, 5, 1);
-    this.px(g, COLORS.playerShirtHi, 3, 9, 2, 4, 0.6);
-    this.px(g, COLORS.playerShirtShade, s - 5, 9, 3, 5, 0.85);
-    this.px(g, COLORS.playerSkin, 2, 10, 1, 2);
-    this.px(g, COLORS.playerSkin, s - 3, 10, 1, 2);
+    this.rr(g, palette.shirt, 2, 9, s - 4, 5, 1);
+    this.px(g, palette.shirtHi, 3, 9, 2, 4, 0.6);
+    this.px(g, palette.shirtShade, s - 5, 9, 3, 5, 0.85);
+    this.px(g, palette.skin, 2, 10, 1, 2);
+    this.px(g, palette.skin, s - 3, 10, 1, 2);
     if (facing === "back") {
       // Spine seam down the back of the shirt.
-      this.px(g, COLORS.playerShirtShade, s / 2 - 0.5, 9, 1, 5, 0.6);
+      this.px(g, palette.shirtShade, s / 2 - 0.5, 9, 1, 5, 0.6);
     }
 
     // Legs, split left/right so a stride frame can offset them into a
     // mid-step pose (one leg forward/up, one back/down).
     const legW = (s - 6) / 2;
     const shift = stride ? 1 : 0;
-    this.rr(g, COLORS.playerPants, 3, 14 - shift, legW, 4, 1);
-    this.rr(g, COLORS.playerPants, 3 + legW, 14 + shift, legW, 4, 1);
-    this.px(g, COLORS.playerPantsShade, s - 5, 15 + shift, 2, 3, 0.7);
+    this.rr(g, palette.pants, 3, 14 - shift, legW, 4, 1);
+    this.rr(g, palette.pants, 3 + legW, 14 + shift, legW, 4, 1);
+    this.px(g, palette.pantsShade, s - 5, 15 + shift, 2, 3, 0.7);
     this.px(g, COLORS.playerOutline, s / 2 - 0.5, 14, 1, 4, 0.7);
 
     g.generateTexture(key, s, s);

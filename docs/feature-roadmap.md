@@ -36,7 +36,9 @@ milestone; features stay minimal until the prototype is stable.
 - Level system + level transitions.
 - Audio manager with music/SFX assets and per-channel volumes.
 - Settings persistence (done) + savegame persistence (schema done, wire store).
-- Skin selection groundwork (atlas swap keyed by `skinId`).
+- Skin selection (done) — reward skins unlocked by escaping each official
+  level, equipped via `skinId`, palette-swapped in the procedural player
+  atlas.
 
 ## Week 6 — Polish & Release
 

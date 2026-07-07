@@ -1,13 +1,15 @@
 import Phaser from "phaser";
-import { PLAYER, TEXTURES, WALK_CYCLE_MS } from "@/game/config/constants";
+import { PLAYER, playerTextureKey, WALK_CYCLE_MS } from "@/game/config/constants";
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
+  private readonly skinId: string;
   private facingBack = false;
   private walkFrame = false;
   private walkTimer = 0;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, TEXTURES.player);
+  constructor(scene: Phaser.Scene, x: number, y: number, skinId: string) {
+    super(scene, x, y, playerTextureKey(skinId, "front", false));
+    this.skinId = skinId;
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
@@ -60,11 +62,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.walkFrame = false;
     }
 
-    if (this.facingBack) {
-      this.setTexture(this.walkFrame ? TEXTURES.playerBackWalk : TEXTURES.playerBack);
-    } else {
-      this.setTexture(this.walkFrame ? TEXTURES.playerWalk : TEXTURES.player);
-    }
+    const facing = this.facingBack ? "back" : "front";
+    this.setTexture(playerTextureKey(this.skinId, facing, this.walkFrame));
   }
 
   get tileX(): number {
