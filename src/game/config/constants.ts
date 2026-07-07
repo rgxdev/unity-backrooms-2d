@@ -59,21 +59,50 @@ export const DIFFICULTY_CONFIG: Record<Difficulty, DifficultyConfig> = {
   easy: {
     lethal: false,
     pursuitSpeed: 150,
-    base: { width: 34, height: 26, rooms: 6, monsters: 1, extraLinks: 1 },
+    base: { width: 34, height: 26, rooms: 7, monsters: 2, extraLinks: 2 },
     perLevel: { width: 3, height: 2, rooms: 1, monsters: 0 },
   },
   middle: {
     lethal: true,
     pursuitSpeed: 160,
-    base: { width: 46, height: 34, rooms: 9, monsters: 2, extraLinks: 2 },
+    base: { width: 46, height: 34, rooms: 10, monsters: 3, extraLinks: 3 },
     perLevel: { width: 4, height: 3, rooms: 1, monsters: 1 },
   },
   hard: {
     lethal: true,
     pursuitSpeed: 172,
-    base: { width: 58, height: 42, rooms: 12, monsters: 3, extraLinks: 3 },
+    base: { width: 58, height: 42, rooms: 14, monsters: 4, extraLinks: 4 },
     perLevel: { width: 5, height: 3, rooms: 2, monsters: 1 },
   },
+} as const;
+
+/**
+ * Jump-scare encounters: a monster flashes into view near the player for a
+ * few seconds and vanishes again — distinct from the persistent patrol/pursuit
+ * monsters. Above easy, getting too close during the window triggers an
+ * attack. Purely a tension beat; scaled up near the exit (see EXIT_DREAD).
+ */
+export const JUMPSCARE = {
+  minIntervalMs: 7000,
+  maxIntervalMs: 15000,
+  minVisibleMs: 1700,
+  maxVisibleMs: 3200,
+  /** World-unit distance at which an above-easy encounter attacks. */
+  attackRadius: 60,
+  /** Tile-distance band from the player it can appear within — close enough
+   *  to be seen, far enough to feel like it was already there. */
+  spawnMinRadiusTiles: 3,
+  spawnMaxRadiusTiles: 5.5,
+} as const;
+
+/** Monster activity ramps up as the player nears the exit. */
+export const EXIT_DREAD = {
+  /** Tile-distance from the exit at which activity starts ramping up. */
+  radiusTiles: 14,
+  /** Jump-scare interval shrinks to this fraction of normal at the exit. */
+  minIntervalScale: 0.4,
+  /** Ambient patrol speed multiplier at the exit. */
+  maxSpeedBoost: 0.6,
 } as const;
 
 /** Never generate more monsters than this, whatever the difficulty/index. */
@@ -146,7 +175,9 @@ export const TEXTURES = {
   floorAlt: "tex-floor-alt",
   wall: "tex-wall",
   player: "tex-player",
+  playerBack: "tex-player-back",
   monster: "tex-monster",
+  monsterBack: "tex-monster-back",
   exit: "tex-exit",
   hole: "tex-hole",
 } as const;

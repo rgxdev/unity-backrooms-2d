@@ -68,11 +68,14 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
 
   private drive(velocity: Vec2): void {
     this.setVelocity(velocity.x, velocity.y);
+    if (velocity.y < -5) this.setTexture(TEXTURES.monsterBack);
+    else if (velocity.y > 5 || velocity.x !== 0) this.setTexture(TEXTURES.monster);
     if (velocity.x !== 0) this.setFlipX(velocity.x < 0);
   }
 
-  /** Walk the looping patrol path (stationary if it has no waypoints). */
-  tickAmbient(): void {
+  /** Walk the looping patrol path (stationary if it has no waypoints).
+   *  `speedMultiplier` lets the scene ramp patrol pace up (e.g. near the exit). */
+  tickAmbient(speedMultiplier = 1): void {
     if (this.waypoints.length === 0) {
       this.setVelocity(0, 0);
       return;
@@ -85,7 +88,9 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
       );
       target = this.waypoints[this.waypointIndex]!;
     }
-    this.drive(seekVelocity(this.pos(), target, this.tuning.patrolSpeed));
+    this.drive(
+      seekVelocity(this.pos(), target, this.tuning.patrolSpeed * speedMultiplier),
+    );
   }
 
   /** Chase the given world position at `speed` units/sec. */

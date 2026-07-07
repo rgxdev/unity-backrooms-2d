@@ -3,6 +3,8 @@ import {
   BLACKOUT_MIN_ALPHA,
   DIFFICULTY_CONFIG,
   DREAD,
+  EXIT_DREAD,
+  JUMPSCARE,
   SCENES,
   TEXTURES,
   TILE_SIZE,
@@ -73,6 +75,13 @@ export class MainScene extends Phaser.Scene {
   private lastTileX = -1;
   private lastTileY = -1;
   private fpsText: Phaser.GameObjects.Text | null = null;
+
+  /** A transient "flash into view for a few seconds" encounter, distinct
+   *  from the persistent patrol/pursuer monsters. */
+  private jumpscareMonster: Monster | null = null;
+  private jumpscareNextAt = -1;
+  private jumpscareDespawnAt = 0;
+  private jumpscareAttacked = false;
 
   constructor() {
     super(SCENES.main);
@@ -161,6 +170,10 @@ export class MainScene extends Phaser.Scene {
     this.lastTileY = -1;
     this.discoveredZones.clear();
     this.fpsText = null;
+    this.jumpscareMonster = null;
+    this.jumpscareNextAt = -1;
+    this.jumpscareDespawnAt = 0;
+    this.jumpscareAttacked = false;
   }
 
   private isWallTile(x: number, y: number): boolean {
@@ -342,6 +355,7 @@ export class MainScene extends Phaser.Scene {
   private updateAi(time: number): void {
     if (this.ended) {
       for (const m of this.monsters) m.freeze();
+      this.jumpscareMonster?.freeze();
       return;
     }
     if (this.monsters.length === 0) return;
@@ -363,11 +377,17 @@ export class MainScene extends Phaser.Scene {
 
     const playerPos: Vec2 = { x: this.player.x, y: this.player.y };
     switch (this.phase) {
-      case GamePhase.Ambient:
-        for (const m of this.monsters) m.tickAmbient();
+      case GamePhase.Ambient: {
+        // Monster activity ramps up the closer the player gets to the exit.
+        const proximity = this.exitProximity(tile.x, tile.y);
+        const speedBoost = 1 + proximity * EXIT_DREAD.maxSpeedBoost;
+        for (const m of this.monsters) m.tickAmbient(speedBoost);
         this.presenceCue(time, playerPos);
+        this.updateJumpscare(time, playerPos, proximity);
         break;
+      }
       case GamePhase.Pursuit: {
+        this.despawnJumpscare();
         let nearest = Infinity;
         for (const m of this.monsters) {
           m.pursue(playerPos, this.pursuitSpeed);
@@ -379,6 +399,7 @@ export class MainScene extends Phaser.Scene {
       }
       case GamePhase.Escaped:
         for (const m of this.monsters) m.freeze();
+        this.jumpscareMonster?.freeze();
         break;
     }
   }
@@ -477,6 +498,113 @@ export class MainScene extends Phaser.Scene {
       duration: 380,
       yoyo: true,
       ease: "Sine.InOut",
+    });
+  }
+
+  /** 0 (far away) to 1 (standing on it) — how close the player is to the exit. */
+  private exitProximity(tileX: number, tileY: number): number {
+    const exit = this.level.exit;
+    if (!exit) return 0;
+    const dx = tileX - exit.x;
+    const dy = tileY - exit.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    return Phaser.Math.Clamp(1 - dist / EXIT_DREAD.radiusTiles, 0, 1);
+  }
+
+  /**
+   * A monster flashes into view near the player for a few seconds, then
+   * vanishes — a jump-scare distinct from the persistent patrol/pursuer
+   * monsters. Above easy, getting too close during the window triggers an
+   * attack. Frequency ramps up near the exit.
+   */
+  private updateJumpscare(
+    time: number,
+    playerPos: Vec2,
+    exitProximity: number,
+  ): void {
+    if (this.jumpscareNextAt < 0) {
+      // First roll after level load — don't scare the player immediately.
+      this.jumpscareNextAt =
+        time + Phaser.Math.Between(JUMPSCARE.minIntervalMs, JUMPSCARE.maxIntervalMs);
+      return;
+    }
+
+    if (this.jumpscareMonster) {
+      const dist = this.jumpscareMonster.distanceTo(playerPos);
+      if (
+        !this.jumpscareAttacked &&
+        this.difficulty !== "easy" &&
+        dist <= JUMPSCARE.attackRadius
+      ) {
+        this.jumpscareAttacked = true;
+        this.audio.roar();
+        this.cameras.main.flash(220, 120, 0, 0);
+        this.jumpscareMonster.pursue(playerPos, this.pursuitSpeed * 1.4);
+        if (this.lethal) this.onDeath();
+        // Despawn shortly after the attack regardless of outcome.
+        this.jumpscareDespawnAt = Math.min(this.jumpscareDespawnAt, time + 500);
+      }
+      if (time >= this.jumpscareDespawnAt) this.despawnJumpscare();
+      return;
+    }
+
+    if (time < this.jumpscareNextAt) return;
+    this.trySpawnJumpscare(time, exitProximity);
+    const scale = 1 - exitProximity * (1 - EXIT_DREAD.minIntervalScale);
+    const interval =
+      Phaser.Math.Between(JUMPSCARE.minIntervalMs, JUMPSCARE.maxIntervalMs) * scale;
+    this.jumpscareNextAt = time + interval;
+  }
+
+  /** Try a handful of candidate tiles in view range and spawn on the first
+   *  one that's walkable and actually visible to the player. */
+  private trySpawnJumpscare(time: number, exitProximity: number): void {
+    const origin = this.playerTile();
+    const isWall = (x: number, y: number) => this.isWallTile(x, y);
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Phaser.Math.FloatBetween(
+        JUMPSCARE.spawnMinRadiusTiles,
+        JUMPSCARE.spawnMaxRadiusTiles,
+      );
+      const tx = Math.round(origin.x + Math.cos(angle) * dist);
+      const ty = Math.round(origin.y + Math.sin(angle) * dist);
+      if (tx < 0 || ty < 0 || tx >= this.level.width || ty >= this.level.height) {
+        continue;
+      }
+      if (this.isWallTile(tx, ty) || this.isHoleTile(tx, ty)) continue;
+      if (!this.visibility.hasLineOfSight(origin.x, origin.y, tx, ty, isWall)) {
+        continue;
+      }
+
+      const c = this.centreOf(tx, ty);
+      const monster = new Monster(this, c.x, c.y, [], DEFAULT_MONSTER_TUNING);
+      monster.setDepth(90);
+      monster.setAlpha(0);
+      this.physics.add.collider(monster, this.walls);
+      this.tweens.add({ targets: monster, alpha: 1, duration: 220, ease: "Sine.Out" });
+
+      this.jumpscareMonster = monster;
+      this.jumpscareAttacked = false;
+      const visibleMs = Phaser.Math.Between(
+        JUMPSCARE.minVisibleMs,
+        JUMPSCARE.maxVisibleMs,
+      );
+      this.jumpscareDespawnAt = time + visibleMs;
+      this.audio.growl(0.3 + exitProximity * 0.3);
+      return;
+    }
+  }
+
+  private despawnJumpscare(): void {
+    const monster = this.jumpscareMonster;
+    if (!monster) return;
+    this.jumpscareMonster = null;
+    this.tweens.add({
+      targets: monster,
+      alpha: 0,
+      duration: 250,
+      onComplete: () => monster.destroy(),
     });
   }
 

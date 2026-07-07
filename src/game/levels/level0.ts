@@ -2,6 +2,7 @@ import { parseLevel, TileKind, type LevelData } from "@/lib/schemas/level";
 import { DIFFICULTY_CONFIG, MAX_MONSTERS } from "@/game/config/constants";
 import { chance, makeRng, pick, randInt, shuffle, type Rng } from "./rng";
 import type { GenerateInput } from "./generate";
+import { pickWallExit } from "./wallExit";
 
 /**
  * Level 0 — "The Lobby" — themed after the Backrooms wiki entry
@@ -289,7 +290,12 @@ export function generateLevel0(input: GenerateInput): LevelData {
 
   const spawn = centre(rooms[spawnCell.r]![spawnCell.c]!);
   const exitRoom = rooms[exitCell.r]![exitCell.c]!; // manila sector
-  const exit = { x: exitRoom.x + exitRoom.w - 2, y: exitRoom.y + exitRoom.h - 2 };
+  // The exit reads as a genuine breach in the wall bank around the room
+  // (not a tile floating in the open floor) whenever one can be found.
+  const exit = pickWallExit(tiles, width, height, exitRoom, rng) ?? {
+    x: exitRoom.x + exitRoom.w - 2,
+    y: exitRoom.y + exitRoom.h - 2,
+  };
 
   // A small hidden Manila safe room in the exit sector's corner.
   const manila: Room = {

@@ -34,6 +34,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return body.velocity.lengthSq() > 100;
   }
 
+  /** Face away from the camera walking "up", toward it otherwise; mirror
+   *  left/right. Called once per frame by the controller. */
+  updateFacing(vx: number, vy: number): void {
+    if (vy < -5) this.setTexture(TEXTURES.playerBack);
+    else if (vy > 5 || vx !== 0) this.setTexture(TEXTURES.player);
+    if (vx !== 0) this.setFlipX(vx < 0);
+  }
+
   get tileX(): number {
     return Math.floor(this.x / this.scene.registry.get("tileSize"));
   }

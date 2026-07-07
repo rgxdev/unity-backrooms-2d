@@ -35,8 +35,10 @@ export class PreloadScene extends Phaser.Scene {
     this.makeCarpet(TEXTURES.floor, 0);
     this.makeCarpet(TEXTURES.floorAlt, 1);
     this.makeWall(TEXTURES.wall);
-    this.makePlayer(TEXTURES.player);
-    this.makeMonster(TEXTURES.monster);
+    this.makePlayer(TEXTURES.player, "front");
+    this.makePlayer(TEXTURES.playerBack, "back");
+    this.makeMonster(TEXTURES.monster, "front");
+    this.makeMonster(TEXTURES.monsterBack, "back");
     this.makeExit(TEXTURES.exit);
     this.makeHole(TEXTURES.hole);
   }
@@ -167,11 +169,14 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   /**
-   * Top-down character sprite: rounded silhouette, hair, shaded face,
-   * shirt/legs with soft multi-tone shading and a dark keyline — a readable
-   * little person with a gentle rounded shape instead of a two-tone square.
+   * Top-down character sprite: rounded silhouette, hair, shaded shirt/legs
+   * with soft multi-tone shading and a dark keyline — a readable little
+   * person with a gentle rounded shape instead of a two-tone square.
+   * `facing` swaps the face (front) for a full head of hair and a spine
+   * seam (back), so walking away from the camera reads differently to
+   * walking toward it.
    */
-  private makePlayer(key: string): void {
+  private makePlayer(key: string, facing: "front" | "back"): void {
     const s = PLAYER.size;
     const g = this.make.graphics({ x: 0, y: 0 }, false);
 
@@ -187,12 +192,19 @@ export class PreloadScene extends Phaser.Scene {
     this.rr(g, COLORS.playerHair, 3, 1, s - 6, 5, 1);
     this.px(g, COLORS.playerHairHi, 4, 1, s - 8, 1, 0.8);
 
-    // Face with a shaded right cheek — soft two-tone blend.
-    this.rr(g, COLORS.playerSkin, 3, 5, s - 6, 4, 1);
-    this.px(g, COLORS.playerSkinShade, s - 6, 6, 2, 3, 0.8);
-    // Eyes.
-    this.px(g, COLORS.playerOutline, 5, 7, 1, 1);
-    this.px(g, COLORS.playerOutline, s - 6, 7, 1, 1);
+    if (facing === "front") {
+      // Face with a shaded right cheek — soft two-tone blend.
+      this.rr(g, COLORS.playerSkin, 3, 5, s - 6, 4, 1);
+      this.px(g, COLORS.playerSkinShade, s - 6, 6, 2, 3, 0.8);
+      // Eyes.
+      this.px(g, COLORS.playerOutline, 5, 7, 1, 1);
+      this.px(g, COLORS.playerOutline, s - 6, 7, 1, 1);
+    } else {
+      // Back of the head: hair covers where the face would be, plus a
+      // centre parting seam.
+      this.rr(g, COLORS.playerHair, 3, 5, s - 6, 4, 1);
+      this.px(g, COLORS.playerOutline, s / 2 - 0.5, 5, 1, 4, 0.5);
+    }
 
     // Shirt torso + arms, shaded on the right, highlighted on the left.
     this.rr(g, COLORS.playerShirt, 2, 9, s - 4, 5, 1);
@@ -200,6 +212,10 @@ export class PreloadScene extends Phaser.Scene {
     this.px(g, COLORS.playerShirtShade, s - 5, 9, 3, 5, 0.85);
     this.px(g, COLORS.playerSkin, 2, 10, 1, 2);
     this.px(g, COLORS.playerSkin, s - 3, 10, 1, 2);
+    if (facing === "back") {
+      // Spine seam down the back of the shirt.
+      this.px(g, COLORS.playerShirtShade, s / 2 - 0.5, 9, 1, 5, 0.6);
+    }
 
     // Legs, rounded stance with a centre seam.
     this.rr(g, COLORS.playerPants, 3, 14, s - 6, 4, 1);
@@ -213,9 +229,11 @@ export class PreloadScene extends Phaser.Scene {
   /**
    * Lurking monster sprite: a hunched, rounded dark body with glowing eyes
    * and a pale maw — reads as a threat at a glance and keeps a soft organic
-   * silhouette instead of a jagged block.
+   * silhouette instead of a jagged block. `facing` swaps the glowing-eyes
+   * face (front) for a ridged, faceless hunch (back) — worse to see chasing
+   * away from you than toward you.
    */
-  private makeMonster(key: string): void {
+  private makeMonster(key: string, facing: "front" | "back"): void {
     const s = MONSTER.size;
     const g = this.make.graphics({ x: 0, y: 0 }, false);
 
@@ -238,19 +256,26 @@ export class PreloadScene extends Phaser.Scene {
     this.px(g, COLORS.monsterLimb, 1, s / 2 - 1, 2, 5);
     this.px(g, COLORS.monsterLimb, s - 3, s / 2 - 1, 2, 5);
 
-    // Glowing eyes with a soft outer bloom.
-    this.px(g, COLORS.monsterEyeGlow, 3, 6, 4, 4, 0.35);
-    this.px(g, COLORS.monsterEyeGlow, s - 7, 6, 4, 4, 0.35);
-    this.px(g, COLORS.monsterEye, 4, 7, 2, 2);
-    this.px(g, COLORS.monsterEye, s - 6, 7, 2, 2);
-    this.px(g, 0xffffff, 4, 7, 1, 1, 0.85);
-    this.px(g, 0xffffff, s - 6, 7, 1, 1, 0.85);
+    if (facing === "front") {
+      // Glowing eyes with a soft outer bloom.
+      this.px(g, COLORS.monsterEyeGlow, 3, 6, 4, 4, 0.35);
+      this.px(g, COLORS.monsterEyeGlow, s - 7, 6, 4, 4, 0.35);
+      this.px(g, COLORS.monsterEye, 4, 7, 2, 2);
+      this.px(g, COLORS.monsterEye, s - 6, 7, 2, 2);
+      this.px(g, 0xffffff, 4, 7, 1, 1, 0.85);
+      this.px(g, 0xffffff, s - 6, 7, 1, 1, 0.85);
 
-    // Jagged pale maw with a shaded underside.
-    this.px(g, COLORS.monsterMawShade, 5, s - 8, s - 10, 3, 0.6);
-    this.px(g, COLORS.monsterMaw, 5, s - 9, s - 10, 2);
-    for (let i = 0; i < 3; i++) {
-      this.px(g, COLORS.monsterBodyShade, 7 + i * 3, s - 9, 1, 2);
+      // Jagged pale maw with a shaded underside.
+      this.px(g, COLORS.monsterMawShade, 5, s - 8, s - 10, 3, 0.6);
+      this.px(g, COLORS.monsterMaw, 5, s - 9, s - 10, 2);
+      for (let i = 0; i < 3; i++) {
+        this.px(g, COLORS.monsterBodyShade, 7 + i * 3, s - 9, 1, 2);
+      }
+    } else {
+      // Faceless hunch: a ridge of jagged spine bumps instead of eyes/maw.
+      for (let i = 0; i < 3; i++) {
+        this.rr(g, COLORS.monsterBodyShade, 5 + i * 4, 4 + i, 3, 3, 0.7);
+      }
     }
 
     g.generateTexture(key, s, s);
