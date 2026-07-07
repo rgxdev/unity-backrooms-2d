@@ -7,11 +7,26 @@ export const PLAYER = {
 } as const;
 
 export const COLORS = {
-  floor: 0xbfae54,
-  floorAlt: 0xb2a24c,
-  wall: 0x6f6330,
-  wallShade: 0x554b24,
-  player: 0xe8e2c4,
+  // Woven carpet floor — warm mustard with visible thread weave
+  floor: 0xc4b158,
+  floorAlt: 0xbaa74f,
+  floorWeaveHi: 0xd8c66d,
+  floorWeaveLo: 0x9c8b3d,
+  floorSeam: 0x83732f,
+  // Wallpaper wall block with pseudo-3D bevel
+  wall: 0xdccd78,
+  wallStripe: 0xcdbc63,
+  wallHi: 0xf0e6a6,
+  wallShade: 0xa8964a,
+  wallDark: 0x7a692f,
+  wallTrim: 0x5f5127,
+  // Top-down character sprite
+  playerSkin: 0xe8b78a,
+  playerSkinShade: 0xcf9b6f,
+  playerHair: 0x5a3b22,
+  playerShirt: 0x4d84c4,
+  playerShirtShade: 0x38629a,
+  playerPants: 0x3b3a58,
   playerOutline: 0x1a180f,
   fog: 0x05050a,
 } as const;
