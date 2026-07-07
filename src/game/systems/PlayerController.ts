@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { PLAYER } from "@/game/config/constants";
+import { PLAYER, STAMINA } from "@/game/config/constants";
 import type { Player } from "@/game/entities/Player";
 
 type Keys = {
@@ -35,6 +35,24 @@ export class PlayerController {
   private readonly keys: Keys;
   private readonly velocity = new Phaser.Math.Vector2();
   private readonly targetVelocity = new Phaser.Math.Vector2();
+
+  /** 0..STAMINA.max — drains while sprinting, regenerates while not. */
+  private stamina: number = STAMINA.max;
+  /** Forced sprint lockout remaining (ms) after the meter hits empty. */
+  private cooldownRemainingMs = 0;
+  /** "Still winded" delay remaining (ms) before regen resumes. */
+  private regenDelayRemainingMs = 0;
+
+  /** 0..1 — drives the HUD stamina bar. */
+  get staminaFraction(): number {
+    return this.stamina / STAMINA.max;
+  }
+
+  /** True while sprint is locked out after emptying the meter — the HUD
+   *  reads this to flash the bar red. */
+  get sprintExhausted(): boolean {
+    return this.cooldownRemainingMs > 0;
+  }
 
   constructor(
     scene: Phaser.Scene,
@@ -76,7 +94,9 @@ export class PlayerController {
     );
 
     const moving = this.targetVelocity.lengthSq() > 0;
-    const sprinting = moving && k.shift.isDown;
+    const wantsSprint = moving && k.shift.isDown;
+    const canSprint = wantsSprint && this.stamina > 0 && !this.sprintExhausted;
+    const sprinting = canSprint;
     if (moving) {
       this.targetVelocity
         .normalize()
@@ -84,6 +104,8 @@ export class PlayerController {
     }
 
     const dt = deltaMs / 1000;
+    this.updateStamina(sprinting, deltaMs, dt);
+
     const rampRate = moving ? PLAYER.acceleration : PLAYER.deceleration;
     const step = rampRate * dt;
     this.velocity.set(
@@ -95,5 +117,28 @@ export class PlayerController {
 
     // Sprinting is loud — nearby monsters can hear it and start searching.
     if (sprinting) this.onNoise?.(this.player.x, this.player.y);
+  }
+
+  /** Drains the meter while sprinting; regenerates (after a short "still
+   *  winded" delay) while not — and once emptied, locks sprint out entirely
+   *  for {@link STAMINA.cooldownMs} instead of letting it recover mid-stride. */
+  private updateStamina(sprinting: boolean, deltaMs: number, dt: number): void {
+    if (sprinting) {
+      this.stamina = Math.max(0, this.stamina - STAMINA.drainPerSec * dt);
+      this.regenDelayRemainingMs = STAMINA.regenDelayMs;
+      if (this.stamina <= 0) {
+        this.cooldownRemainingMs = STAMINA.cooldownMs;
+      }
+      return;
+    }
+    if (this.cooldownRemainingMs > 0) {
+      this.cooldownRemainingMs = Math.max(0, this.cooldownRemainingMs - deltaMs);
+    }
+    if (this.regenDelayRemainingMs > 0) {
+      this.regenDelayRemainingMs = Math.max(0, this.regenDelayRemainingMs - deltaMs);
+    }
+    if (this.cooldownRemainingMs <= 0 && this.regenDelayRemainingMs <= 0) {
+      this.stamina = Math.min(STAMINA.max, this.stamina + STAMINA.regenPerSec * dt);
+    }
   }
 }

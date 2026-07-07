@@ -191,6 +191,9 @@ export class MainScene extends Phaser.Scene {
   private hotbarBg!: Phaser.GameObjects.Rectangle;
   private hotbarIcon!: Phaser.GameObjects.Image;
   private hotbarLabel!: Phaser.GameObjects.Text;
+  /** Top-left sprint stamina meter fill — background track needs no
+   *  reference after creation since it never changes. */
+  private staminaBarFill!: Phaser.GameObjects.Rectangle;
 
   /**
    * Found documents (letters/book pages) scattered per level — see
@@ -615,6 +618,7 @@ export class MainScene extends Phaser.Scene {
     this.flashlightGraphics.setBlendMode(Phaser.BlendModes.ADD);
 
     this.buildHotbar();
+    this.buildStaminaBar();
     if (this.hasFlashlight) {
       this.hotbarBg.setVisible(true);
       this.hotbarIcon.setVisible(true);
@@ -651,6 +655,41 @@ export class MainScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(951)
       .setVisible(false);
+  }
+
+  /** Top-left sprint stamina meter — always visible, since sprint is gated
+   *  by it from the first step of every run. */
+  private buildStaminaBar(): void {
+    const x = 14;
+    const y = 26;
+    const w = 90;
+    const h = 8;
+    this.add
+      .rectangle(x, y, w, h, 0x0a0a12, 0.78)
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, 0x4a4530, 0.9)
+      .setScrollFactor(0)
+      .setDepth(950);
+    this.staminaBarFill = this.add
+      .rectangle(x + 1, y + 1, w - 2, h - 2, 0xe4c94a, 0.9)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(951);
+  }
+
+  /** Syncs the stamina bar's width/colour to the controller each frame —
+   *  amber while healthy, red and flashing once sprint locks out empty. */
+  private updateStaminaBar(): void {
+    if (!this.staminaBarFill?.active) return;
+    const frac = this.controller.staminaFraction;
+    const maxWidth = 88;
+    this.staminaBarFill.width = Math.max(0, maxWidth * frac);
+    const exhausted = this.controller.sprintExhausted;
+    this.staminaBarFill.fillColor = exhausted
+      ? 0xd8402a
+      : frac < 0.3
+        ? 0xd8842a
+        : 0xe4c94a;
   }
 
   /** Icon brightness / border glow reflecting whether the beam is on. */
@@ -2130,6 +2169,7 @@ export class MainScene extends Phaser.Scene {
     // an unfair way to wander into a hole or a monster.
     if (this.loreReading) this.player.setVelocity(0, 0);
     else this.controller.update(delta);
+    this.updateStaminaBar();
 
     const tileX = Math.floor(this.player.x / TILE_SIZE);
     const tileY = Math.floor(this.player.y / TILE_SIZE);

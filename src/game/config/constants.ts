@@ -21,6 +21,28 @@ export const MONSTER = {
   bodyInset: 10,
 } as const;
 
+/**
+ * Sprint stamina: sprinting is no longer free. It drains a meter that must
+ * fully lock out sprinting (a hard cooldown) once emptied, forcing the
+ * player to manage bursts instead of holding Shift the whole run — the
+ * tryhard pressure the horror pacing is built around.
+ */
+export const STAMINA = {
+  max: 100,
+  /** Meter units drained per second while sprinting — empties in ~3.6s of
+   *  continuous sprint. */
+  drainPerSec: 28,
+  /** Meter units regenerated per second once eligible — slower than the
+   *  drain so recovery always costs more time than the burst it followed. */
+  regenPerSec: 13,
+  /** Delay (ms) after releasing sprint before regen starts — a moment of
+   *  "still winded" instead of instant recovery. */
+  regenDelayMs: 700,
+  /** Forced sprint lockout (ms) once the meter hits empty — running out
+   *  mid-chase is a real cost, not a one-frame blip. */
+  cooldownMs: 2600,
+} as const;
+
 /** Scripted-dread pacing knobs (see MonsterDirector). */
 export const DREAD = {
   /** World radius within which the player can hear the lurking monster. */
@@ -50,7 +72,7 @@ export const PURSUIT_CATCH = {
   /** After this many non-lethal catches in one run, the pursuer gives up for
    *  good instead of looping forever — the chase should read as scary, not
    *  as an unending punishment. */
-  maxCatches: 3,
+  maxCatches: 2,
 } as const;
 
 /** How often (ms) each pursuing monster recalculates its route to the player
@@ -85,21 +107,21 @@ export interface DifficultyConfig {
 export const DIFFICULTY_CONFIG: Record<Difficulty, DifficultyConfig> = {
   easy: {
     lethal: false,
-    pursuitSpeed: 150,
-    base: { width: 34, height: 26, rooms: 7, monsters: 2, extraLinks: 2 },
-    perLevel: { width: 3, height: 2, rooms: 1, monsters: 0 },
+    pursuitSpeed: 155,
+    base: { width: 40, height: 30, rooms: 9, monsters: 3, extraLinks: 3 },
+    perLevel: { width: 4, height: 3, rooms: 2, monsters: 0 },
   },
   middle: {
     lethal: true,
-    pursuitSpeed: 160,
-    base: { width: 46, height: 34, rooms: 10, monsters: 3, extraLinks: 3 },
-    perLevel: { width: 4, height: 3, rooms: 1, monsters: 1 },
+    pursuitSpeed: 172,
+    base: { width: 54, height: 40, rooms: 13, monsters: 4, extraLinks: 4 },
+    perLevel: { width: 5, height: 4, rooms: 2, monsters: 1 },
   },
   hard: {
     lethal: true,
-    pursuitSpeed: 172,
-    base: { width: 58, height: 42, rooms: 14, monsters: 4, extraLinks: 4 },
-    perLevel: { width: 5, height: 3, rooms: 2, monsters: 1 },
+    pursuitSpeed: 190,
+    base: { width: 68, height: 50, rooms: 18, monsters: 5, extraLinks: 5 },
+    perLevel: { width: 6, height: 4, rooms: 2, monsters: 1 },
   },
 } as const;
 
@@ -225,7 +247,7 @@ export const OLDSCHOOL_FX = {
 } as const;
 
 /** Never generate more monsters than this, whatever the difficulty/index. */
-export const MAX_MONSTERS = 8;
+export const MAX_MONSTERS = 10;
 
 /**
  * The Flashlight: a single rare pickup, findable only in the first level
