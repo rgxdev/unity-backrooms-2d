@@ -26,7 +26,7 @@ export const DREAD = {
   /** World radius within which the player can hear the lurking monster. */
   presenceRadius: 210,
   /** Min gap between ambient presence cues (ms). */
-  cueCooldownMs: 4500,
+  cueCooldownMs: 3200,
   /** World distance at which a pursuing monster grabs the player (lethal on
    *  middle/hard). */
   killRadius: 17,
@@ -165,7 +165,7 @@ export const STALKER = {
   /** Seconds the lunge scare beat holds before it retreats. */
   lungeDuration: 0.6,
   /** Seconds off-stage after a lunge before it can lurk again. */
-  retreatCooldown: 9,
+  retreatCooldown: 6,
   /** Tile-distance band from the player it respawns within after retreating. */
   respawnMinRadiusTiles: 9,
   respawnMaxRadiusTiles: 16,
@@ -180,12 +180,12 @@ export const STALKER = {
  * physically, not just as an audio cue.
  */
 export const FEAR = {
-  heartbeatMinIntervalMs: 340,
+  heartbeatMinIntervalMs: 260,
   heartbeatMaxIntervalMs: 1150,
   vignetteMinStrength: 0.16,
   // Capped short of "screen goes black" — at max fear the play area must
   // stay readable enough to navigate a chase to the exit.
-  vignetteMaxStrength: 0.7,
+  vignetteMaxStrength: 0.78,
   vignetteMaxRadius: 0.85,
   vignetteMinRadius: 0.42,
   // Width of the darken gradient band (normalized, aspect-corrected) — wide
@@ -208,15 +208,15 @@ export const BLACKOUT_EVENT = {
  *  so even fully "Visible" tiles read as dim sickly fluorescent light
  *  instead of a fully-lit set. Applied everywhere, all the time. */
 export const AMBIENT_DARKEN = {
-  alpha: 0.22,
+  alpha: 0.27,
 } as const;
 
 /** Retro CRT/VHS dressing — a permanent low-key scanline + grain overlay,
  *  plus the glitch strobe kicked off by the "static" ambient anomaly. Pure
  *  cosmetic texture; never affects gameplay or readability. */
 export const OLDSCHOOL_FX = {
-  scanlineAlpha: 0.16,
-  grainAlpha: 0.05,
+  scanlineAlpha: 0.19,
+  grainAlpha: 0.07,
   /** How often the grain noise resamples to a new offset (ms) — a cheap
    *  flicker instead of animating every frame. */
   grainJitterMs: 70,

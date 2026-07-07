@@ -50,7 +50,11 @@ import {
   VisibilitySystem,
 } from "@/game/visibility/VisibilitySystem";
 import { GamePhase, MonsterDirector } from "@/game/ai/MonsterDirector";
-import { type AnomalyType, ProcessDirector } from "@/game/ai/ProcessDirector";
+import {
+  ANOMALY_TYPES,
+  type AnomalyType,
+  ProcessDirector,
+} from "@/game/ai/ProcessDirector";
 import { DEFAULT_MONSTER_TUNING } from "@/game/ai/types";
 import { StalkerAI, StalkerState } from "@/game/ai/StalkerAI";
 import type { Vec2 } from "@/game/ai/steering";
@@ -2151,7 +2155,21 @@ export class MainScene extends Phaser.Scene {
 
     if (!this.ended) {
       const anomaly = this.process.update(time);
-      if (anomaly) this.triggerAnomaly(anomaly);
+      if (anomaly) {
+        this.triggerAnomaly(anomaly);
+        // Rare chaos combo — two things going wrong at once reads as far
+        // more unsettling than either alone, and never happens on a
+        // predictable beat since it rides the already-random anomaly roll.
+        if (Math.random() < 0.15) {
+          const bonus =
+            ANOMALY_TYPES[Math.floor(Math.random() * ANOMALY_TYPES.length)]!;
+          if (bonus !== anomaly) {
+            this.time.delayedCall(120 + Math.random() * 260, () => {
+              if (!this.ended) this.triggerAnomaly(bonus);
+            });
+          }
+        }
+      }
     }
 
     if (this.fpsText) {
@@ -2237,6 +2255,36 @@ export class MainScene extends Phaser.Scene {
         });
         break;
       }
+      case "flash":
+        this.triggerSubliminalFlash();
+        break;
     }
+  }
+
+  /** A single-frame monster face slammed onto the screen and gone almost
+   *  before it registers — the "did I just see that?" subliminal jolt.
+   *  Deliberately faster than any readable jumpscare; the fear is in the
+   *  doubt, not the reveal. */
+  private triggerSubliminalFlash(): void {
+    const cam = this.cameras.main;
+    const face = this.add
+      .image(
+        cam.width * (0.3 + Math.random() * 0.4),
+        cam.height * (0.3 + Math.random() * 0.4),
+        TEXTURES.monster,
+      )
+      .setScrollFactor(0)
+      .setDepth(970)
+      .setAlpha(0)
+      .setTint(0x1a0000)
+      .setScale(6 + Math.random() * 2);
+    this.audio.shriek(0.18, Math.random() * 2 - 1);
+    this.tweens.add({
+      targets: face,
+      alpha: { from: 0, to: 0.85 },
+      duration: 45,
+      yoyo: true,
+      onComplete: () => face.destroy(),
+    });
   }
 }
