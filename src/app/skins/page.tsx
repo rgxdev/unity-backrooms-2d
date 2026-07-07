@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { SKINS } from "@/game/skins/skinCatalog";
 import { getOfficialLevel } from "@/game/levels/officialLevels";
+import { playUiClick } from "@/lib/ui-sound";
 import { useProgress } from "../levels/useProgress";
 import { useSettings } from "../settings/useSettings";
 
@@ -37,7 +38,10 @@ export default function SkinsPage() {
                 unlocked ? "" : " skin-card--locked"
               }`}
               disabled={!unlocked}
-              onClick={() => update({ skinId: skin.id })}
+              onClick={() => {
+                playUiClick();
+                update({ skinId: skin.id });
+              }}
             >
               <span
                 className="skin-card__swatch"
@@ -56,7 +60,7 @@ export default function SkinsPage() {
           );
         })}
       </div>
-      <Link href="/" className="back-link">
+      <Link href="/" className="back-link" onClick={playUiClick}>
         &larr; Back to menu
       </Link>
     </main>

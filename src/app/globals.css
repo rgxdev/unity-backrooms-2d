@@ -233,6 +233,36 @@ a {
   line-height: 1.5;
 }
 
+/* Statistics */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1rem;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 1rem;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-left: 4px solid var(--wall-dim);
+}
+
+.stat-tile__value {
+  font-size: 1.4rem;
+  color: var(--accent);
+  letter-spacing: 0.05rem;
+}
+
+.stat-tile__label {
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1rem;
+}
+
 /* Level selection */
 .level-list {
   display: flex;

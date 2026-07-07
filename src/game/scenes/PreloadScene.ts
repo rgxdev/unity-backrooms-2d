@@ -12,47 +12,121 @@ import { SKINS, type PlayerPalette } from "@/game/skins/skinCatalog";
 
 type Facing = "front" | "back";
 
+/** Texture generations processed per frame — paces the loading process into
+ *  a visible bar instead of one blocking synchronous burst. */
+const BATCH_SIZE = 2;
+
 export class PreloadScene extends Phaser.Scene {
+  private queue: Array<() => void> = [];
+  private totalTasks = 0;
+  private progressBarBg!: Phaser.GameObjects.Rectangle;
+  private progressBarFill!: Phaser.GameObjects.Rectangle;
+  private progressLabel!: Phaser.GameObjects.Text;
+
   constructor() {
     super(SCENES.preload);
   }
 
-  preload(): void {
+  create(): void {
+    this.buildProgressUi();
+    this.queue = this.buildTextureQueue();
+    this.totalTasks = this.queue.length;
+  }
+
+  /**
+   * Drains a few texture-generation tasks per frame instead of running the
+   * whole batch synchronously in `create()`, so the loading screen shows
+   * real, incremental progress. Advances to MainScene once the queue drains.
+   */
+  override update(): void {
+    if (this.queue.length === 0) return;
+    const batch = this.queue.splice(0, BATCH_SIZE);
+    for (const task of batch) task();
+    this.updateProgressUi();
+    if (this.queue.length === 0) this.scene.start(SCENES.main);
+  }
+
+  private buildProgressUi(): void {
     const { width, height } = this.scale;
-    const label = this.add
-      .text(width / 2, height / 2, "LOADING", {
+    const barWidth = Math.min(240, width * 0.6);
+    const barHeight = 6;
+    const barX = width / 2 - barWidth / 2;
+    const barY = height / 2 + 16;
+
+    this.progressLabel = this.add
+      .text(width / 2, height / 2 - 8, "LOADING 0%", {
         fontFamily: "monospace",
         fontSize: "16px",
         color: "#c9b458",
       })
       .setOrigin(0.5);
 
-    this.load.on(Phaser.Loader.Events.COMPLETE, () => label.destroy());
+    this.progressBarBg = this.add
+      .rectangle(barX, barY, barWidth, barHeight, 0x2a2818)
+      .setOrigin(0, 0.5);
+    this.progressBarFill = this.add
+      .rectangle(barX, barY, 0, barHeight, 0xe4c94a)
+      .setOrigin(0, 0.5);
   }
 
-  create(): void {
-    this.generateTextures();
-    this.scene.start(SCENES.main);
+  private updateProgressUi(): void {
+    const done = this.totalTasks - this.queue.length;
+    const ratio = this.totalTasks === 0 ? 1 : done / this.totalTasks;
+    this.progressBarFill.width = this.progressBarBg.width * ratio;
+    this.progressLabel.setText(`LOADING ${Math.round(ratio * 100)}%`);
   }
 
-  private generateTextures(): void {
-    this.makeCarpet(TEXTURES.floor, 0);
-    this.makeCarpet(TEXTURES.floorAlt, 1);
-    this.makeWall(TEXTURES.wall);
-    this.makeWallCrack(TEXTURES.wallCrack);
+  /** The full set of procedural texture-generation steps, as a queue of
+   *  deferred tasks rather than one synchronous call. */
+  private buildTextureQueue(): Array<() => void> {
+    const tasks: Array<() => void> = [
+      () => this.makeCarpet(TEXTURES.floor, 0),
+      () => this.makeCarpet(TEXTURES.floorAlt, 1),
+      () => this.makeWall(TEXTURES.wall),
+      () => this.makeWallCrack(TEXTURES.wallCrack),
+    ];
     for (const skin of SKINS) {
-      this.makePlayer(playerTextureKey(skin.id, "front", false), "front", false, skin.palette);
-      this.makePlayer(playerTextureKey(skin.id, "front", true), "front", true, skin.palette);
-      this.makePlayer(playerTextureKey(skin.id, "back", false), "back", false, skin.palette);
-      this.makePlayer(playerTextureKey(skin.id, "back", true), "back", true, skin.palette);
+      tasks.push(
+        () =>
+          this.makePlayer(
+            playerTextureKey(skin.id, "front", false),
+            "front",
+            false,
+            skin.palette,
+          ),
+        () =>
+          this.makePlayer(
+            playerTextureKey(skin.id, "front", true),
+            "front",
+            true,
+            skin.palette,
+          ),
+        () =>
+          this.makePlayer(
+            playerTextureKey(skin.id, "back", false),
+            "back",
+            false,
+            skin.palette,
+          ),
+        () =>
+          this.makePlayer(
+            playerTextureKey(skin.id, "back", true),
+            "back",
+            true,
+            skin.palette,
+          ),
+      );
     }
-    this.makeMonster(TEXTURES.monster, "front", false);
-    this.makeMonster(TEXTURES.monsterWalk, "front", true);
-    this.makeMonster(TEXTURES.monsterBack, "back", false);
-    this.makeMonster(TEXTURES.monsterBackWalk, "back", true);
-    this.makeExit(TEXTURES.exit);
-    this.makeHole(TEXTURES.hole);
-    this.makeRubble(TEXTURES.rubble);
+    tasks.push(
+      () => this.makeMonster(TEXTURES.monster, "front", false),
+      () => this.makeMonster(TEXTURES.monsterWalk, "front", true),
+      () => this.makeMonster(TEXTURES.monsterBack, "back", false),
+      () => this.makeMonster(TEXTURES.monsterBackWalk, "back", true),
+      () => this.makeExit(TEXTURES.exit),
+      () => this.makeHole(TEXTURES.hole),
+      () => this.makeRubble(TEXTURES.rubble),
+    );
+    return tasks;
   }
 
   /** Fill a single "pixel" cell. Keeps sprite work readable. */

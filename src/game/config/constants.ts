@@ -95,6 +95,13 @@ export const JUMPSCARE = {
   spawnMaxRadiusTiles: 5.5,
 } as const;
 
+/** Ambient environmental "process" pacing — flickers/whispers/thuds that are
+ *  pure atmosphere, independent of the monster director. */
+export const ANOMALY = {
+  minIntervalMs: 9000,
+  maxIntervalMs: 18000,
+} as const;
+
 /** Monster activity ramps up as the player nears the exit. */
 export const EXIT_DREAD = {
   /** Tile-distance from the exit at which activity starts ramping up. */

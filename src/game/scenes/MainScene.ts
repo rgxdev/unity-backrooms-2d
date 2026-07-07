@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import {
+  ANOMALY,
   BLACKOUT_MIN_ALPHA,
   DIFFICULTY_CONFIG,
   DREAD,
@@ -30,6 +31,7 @@ import {
   VisibilitySystem,
 } from "@/game/visibility/VisibilitySystem";
 import { GamePhase, MonsterDirector } from "@/game/ai/MonsterDirector";
+import { type AnomalyType, ProcessDirector } from "@/game/ai/ProcessDirector";
 import { DEFAULT_MONSTER_TUNING } from "@/game/ai/types";
 import type { Vec2 } from "@/game/ai/steering";
 import { getSettings } from "@/lib/settings-store";
@@ -39,6 +41,12 @@ import {
   resolveEquippedSkinId,
   SKINS,
 } from "@/game/skins/skinCatalog";
+import {
+  recordDeath,
+  recordEscape,
+  recordFall,
+  recordRunStart,
+} from "@/lib/stats-store";
 
 const FOG_ALPHA: Record<number, number> = {
   [TileVisibility.Unseen]: 1,
@@ -58,7 +66,11 @@ export class MainScene extends Phaser.Scene {
   private readonly director = new MonsterDirector();
   private phase: GamePhase = GamePhase.Ambient;
   private presenceOverlay!: Phaser.GameObjects.Rectangle;
+  private anomalyOverlay!: Phaser.GameObjects.Rectangle;
   private lastCueAt = -Infinity;
+
+  /** Background ambience process — flickers/whispers/thuds, cosmetic only. */
+  private readonly process = new ProcessDirector(ANOMALY);
 
   private theme!: LevelTheme;
   private difficulty: Difficulty = "easy";
@@ -69,6 +81,7 @@ export class MainScene extends Phaser.Scene {
   /** True once the level has resolved (escaped or died); freezes gameplay. */
   private ended = false;
   private restarted = false;
+  private runStartedAt = 0;
 
   private fogTiles: Phaser.GameObjects.Rectangle[] = [];
   private fogState: Int8Array = new Int8Array(0);
@@ -97,6 +110,8 @@ export class MainScene extends Phaser.Scene {
   create(): void {
     // Scene.restart re-runs create() on the same instance — reset run state.
     this.resetRunState();
+    this.runStartedAt = this.time.now;
+    recordRunStart();
 
     const settings = getSettings();
     const progress = getProgress();
@@ -149,6 +164,7 @@ export class MainScene extends Phaser.Scene {
     this.buildExit();
     this.buildPresenceOverlay();
     this.audio = new AudioManager(this.sound);
+    this.audio.startHum();
 
     if (getSettings().showFps) {
       this.fpsText = this.add
@@ -169,6 +185,7 @@ export class MainScene extends Phaser.Scene {
 
   private resetRunState(): void {
     this.director.reset();
+    this.process.reset();
     this.phase = GamePhase.Ambient;
     this.monsters = [];
     this.lastCueAt = -Infinity;
@@ -182,6 +199,7 @@ export class MainScene extends Phaser.Scene {
     this.jumpscareNextAt = -1;
     this.jumpscareDespawnAt = 0;
     this.jumpscareAttacked = false;
+    this.runStartedAt = 0;
   }
 
   private isWallTile(x: number, y: number): boolean {
@@ -371,9 +389,14 @@ export class MainScene extends Phaser.Scene {
     if (this.presenceOverlay?.active) {
       this.presenceOverlay.setSize(cam.width, cam.height);
     }
+    if (this.anomalyOverlay?.active) {
+      this.anomalyOverlay.setSize(cam.width, cam.height);
+    }
   };
 
-  /** Full-screen dark pulse used to sell the monster's unseen presence. */
+  /** Full-screen dark pulse used to sell the monster's unseen presence, plus
+   *  a separate pale overlay for cosmetic environmental anomalies (flicker)
+   *  so the two cues never fight over one rectangle's colour. */
   private buildPresenceOverlay(): void {
     const cam = this.cameras.main;
     this.presenceOverlay = this.add
@@ -381,6 +404,11 @@ export class MainScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(900);
+    this.anomalyOverlay = this.add
+      .rectangle(0, 0, cam.width, cam.height, 0xffffff, 0)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(901);
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize);
   }
 
@@ -471,9 +499,15 @@ export class MainScene extends Phaser.Scene {
     this.input.keyboard?.once("keydown-SPACE", go);
   }
 
+  /** Milliseconds elapsed in the current run, for stats accumulation. */
+  private elapsedRunMs(): number {
+    return Math.max(0, this.time.now - this.runStartedAt);
+  }
+
   private onEscape(): void {
     if (this.ended) return;
     this.ended = true;
+    recordEscape(this.elapsedRunMs());
     // Unlock and advance to the next official level.
     const wasLast = this.levelIndex >= LAST_LEVEL_INDEX;
     const previouslyUnlockedSkins = getProgress().unlockedSkins;
@@ -488,7 +522,10 @@ export class MainScene extends Phaser.Scene {
     let sub = wasLast
       ? "Du hast alle Level überlebt."
       : `Du bist gerade so entkommen — weiter zu ${next.name}.`;
-    if (rewardSkin) sub += `\nNeuer Skin freigeschaltet: ${rewardSkin.name}!`;
+    if (rewardSkin) {
+      sub += `\nNeuer Skin freigeschaltet: ${rewardSkin.name}!`;
+      this.audio.chime();
+    }
     this.showBanner(heading, sub, "#9dffc0", 0x02040a);
     this.scheduleRestart(2800);
   }
@@ -504,6 +541,7 @@ export class MainScene extends Phaser.Scene {
   private onFall(): void {
     if (this.ended) return;
     this.ended = true;
+    recordFall(this.elapsedRunMs());
     this.player.setVelocity(0, 0);
     this.cameras.main.shake(400, 0.01);
     this.cameras.main.fade(600, 0, 0, 0);
@@ -519,6 +557,7 @@ export class MainScene extends Phaser.Scene {
   private onDeath(): void {
     if (this.ended) return;
     this.ended = true;
+    recordDeath(this.elapsedRunMs());
     this.player.setVelocity(0, 0);
     this.audio.roar();
     this.cameras.main.shake(500, 0.012);
@@ -781,8 +820,37 @@ export class MainScene extends Phaser.Scene {
 
     this.updateAi(time);
 
+    if (!this.ended) {
+      const anomaly = this.process.update(time);
+      if (anomaly) this.triggerAnomaly(anomaly);
+    }
+
     if (this.fpsText) {
       this.fpsText.setText(`FPS ${Math.round(this.game.loop.actualFps)}`);
+    }
+  }
+
+  /** Fire the cosmetic feedback for a background ambience event — no
+   *  gameplay effect, purely atmosphere. */
+  private triggerAnomaly(type: AnomalyType): void {
+    switch (type) {
+      case "flicker":
+        this.audio.flicker();
+        this.tweens.add({
+          targets: this.anomalyOverlay,
+          alpha: { from: 0, to: 0.22 },
+          duration: 55,
+          yoyo: true,
+          repeat: 4,
+        });
+        break;
+      case "whisper":
+        this.audio.whisper();
+        break;
+      case "thud":
+        this.audio.thud();
+        this.cameras.main.shake(140, 0.003);
+        break;
     }
   }
 }
