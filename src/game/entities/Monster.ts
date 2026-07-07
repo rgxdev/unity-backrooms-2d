@@ -29,6 +29,10 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
   private walkFrame = false;
   private walkTimer = 0;
   private moving = false;
+  /** Current route through the maze toward the pursuit target (world
+   *  coordinates, tile centers) — see {@link setChasePath}. */
+  private chasePath: Vec2[] = [];
+  private chasePathIndex = 0;
   /** When true, the leg-stride frame never swaps while moving — it glides
    *  rather than walks. Used by the Stalker: it shouldn't look like it's
    *  ambling, it should look like it's simply *closer* than it was. */
@@ -154,9 +158,38 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
     );
   }
 
-  /** Chase the given world position at `speed` units/sec. */
+  /** Chase the given world position at `speed` units/sec, ignoring walls —
+   *  only safe for short, unobstructed encounters (jump-scares, the Stalker).
+   *  For the maze-spanning Pursuit chase use {@link setChasePath} +
+   *  {@link followChasePath} instead, or it gets stuck shoving into walls. */
   pursue(target: Vec2, speed: number): void {
     this.drive(seekVelocity(this.pos(), target, speed));
+  }
+
+  /** Replaces the current route through the maze (world-space tile-center
+   *  waypoints, ending near the pursuit target). Resets progress along it. */
+  setChasePath(path: Vec2[]): void {
+    this.chasePath = path;
+    this.chasePathIndex = 0;
+  }
+
+  /** Advance along the last path given to {@link setChasePath}, aiming
+   *  precisely at `target` once on its final leg. Falls back to a direct
+   *  {@link pursue} if no path is available (e.g. target unreachable). */
+  followChasePath(speed: number, target: Vec2): void {
+    if (this.chasePath.length === 0) {
+      this.pursue(target, speed);
+      return;
+    }
+    while (
+      this.chasePathIndex < this.chasePath.length - 1 &&
+      hasReached(this.pos(), this.chasePath[this.chasePathIndex]!, this.tuning.reachRadius)
+    ) {
+      this.chasePathIndex += 1;
+    }
+    const onFinalLeg = this.chasePathIndex === this.chasePath.length - 1;
+    const aimAt = onFinalLeg ? target : this.chasePath[this.chasePathIndex]!;
+    this.drive(seekVelocity(this.pos(), aimAt, speed));
   }
 
   freeze(): void {

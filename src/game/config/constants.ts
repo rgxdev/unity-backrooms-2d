@@ -47,6 +47,16 @@ export const PURSUIT_CATCH = {
   /** Minimum time between non-lethal catch reactions (ms). Kept >= stunMs so
    *  the monster is never chasing again before it's allowed to react again. */
   cooldownMs: 2200,
+  /** After this many non-lethal catches in one run, the pursuer gives up for
+   *  good instead of looping forever — the chase should read as scary, not
+   *  as an unending punishment. */
+  maxCatches: 3,
+} as const;
+
+/** How often (ms) each pursuing monster recalculates its route to the player
+ *  through the maze. See ai/pathfinding.ts. */
+export const PATHFIND = {
+  recalcMs: 400,
 } as const;
 
 /**

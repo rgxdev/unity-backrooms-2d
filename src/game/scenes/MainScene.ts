@@ -7,11 +7,12 @@ import {
   DIFFICULTY_CONFIG,
   DREAD,
   EXIT_DREAD,
-  PURSUIT_CATCH,
   FEAR,
   FLOOR_VARIANTS,
   JUMPSCARE,
   MONSTER_TINT,
+  PATHFIND,
+  PURSUIT_CATCH,
   SCENES,
   STALKER,
   STYLE_COLORS,
@@ -45,6 +46,7 @@ import { type AnomalyType, ProcessDirector } from "@/game/ai/ProcessDirector";
 import { DEFAULT_MONSTER_TUNING } from "@/game/ai/types";
 import { StalkerAI, StalkerState } from "@/game/ai/StalkerAI";
 import type { Vec2 } from "@/game/ai/steering";
+import { findPath } from "@/game/ai/pathfinding";
 import { getSettings } from "@/lib/settings-store";
 import { completeLevel, getProgress } from "@/lib/progress-store";
 import {
@@ -93,9 +95,18 @@ export class MainScene extends Phaser.Scene {
   /** Gates {@link onPursuitCatch} so a non-lethal catch reacts once, then
    *  gives the shove some time to open a gap before it can fire again. */
   private pursuitCatchCooldownUntil = 0;
+  /** Non-lethal catches this run — capped at PURSUIT_CATCH.maxCatches so the
+   *  chase eventually lets up instead of looping forever. */
+  private pursuitCatchCount = 0;
   /** Per-monster: while stunned after a non-lethal catch it holds still
    *  instead of immediately re-closing the gap and re-triggering the catch. */
   private readonly pursuitStunnedUntil = new WeakMap<Monster, number>();
+  /** Monsters that hit the non-lethal catch cap — they stop pursuing for the
+   *  rest of the run instead of endlessly re-engaging. */
+  private readonly pursuitDisengaged = new WeakSet<Monster>();
+  /** Per-monster: next time it's allowed to recompute its maze route to the
+   *  player (see ai/pathfinding.ts). */
+  private readonly pursuitPathRecalcAt = new WeakMap<Monster, number>();
   /** True once the level has resolved (escaped or died); freezes gameplay. */
   private ended = false;
   private restarted = false;
@@ -235,6 +246,7 @@ export class MainScene extends Phaser.Scene {
     this.ended = false;
     this.restarted = false;
     this.pursuitCatchCooldownUntil = 0;
+    this.pursuitCatchCount = 0;
     this.lastTileX = -1;
     this.lastTileY = -1;
     this.discoveredZones.clear();
@@ -743,6 +755,39 @@ export class MainScene extends Phaser.Scene {
     };
   }
 
+  /** Recomputes (throttled) and follows a maze route to the player, instead
+   *  of beelining straight at them and getting stuck against walls whenever
+   *  the corridor bends. */
+  private driveMonsterAlongPath(
+    monster: Monster,
+    playerPos: Vec2,
+    time: number,
+  ): void {
+    const recalcAt = this.pursuitPathRecalcAt.get(monster) ?? 0;
+    if (time >= recalcAt) {
+      this.pursuitPathRecalcAt.set(monster, time + PATHFIND.recalcMs);
+      const from = {
+        x: Math.floor(monster.x / TILE_SIZE),
+        y: Math.floor(monster.y / TILE_SIZE),
+      };
+      const to = this.playerTile();
+      const tilePath = findPath(
+        from,
+        to,
+        this.level.width,
+        this.level.height,
+        (x, y) => this.isWallTile(x, y),
+      );
+      monster.setChasePath(
+        tilePath?.map((t) => ({
+          x: t.x * TILE_SIZE + TILE_SIZE / 2,
+          y: t.y * TILE_SIZE + TILE_SIZE / 2,
+        })) ?? [],
+      );
+    }
+    monster.followChasePath(this.pursuitSpeed, playerPos);
+  }
+
   private inRect(
     px: number,
     py: number,
@@ -795,9 +840,16 @@ export class MainScene extends Phaser.Scene {
         let nearest = Infinity;
         let closest: Monster | null = null;
         for (const m of this.monsters) {
+          if (this.pursuitDisengaged.has(m)) {
+            m.freeze();
+            continue;
+          }
           const stunnedUntil = this.pursuitStunnedUntil.get(m) ?? 0;
-          if (time < stunnedUntil) m.freeze();
-          else m.pursue(playerPos, this.pursuitSpeed);
+          if (time < stunnedUntil) {
+            m.freeze();
+          } else {
+            this.driveMonsterAlongPath(m, playerPos, time);
+          }
           const d = m.distanceTo(playerPos);
           if (d < nearest) {
             nearest = d;
@@ -988,14 +1040,15 @@ export class MainScene extends Phaser.Scene {
   /** Non-lethal difficulties never kill on catch — but without a reaction
    *  the pursuer would just sit glued on the player forever (a dead-end
    *  corridor makes that a permanent stuck state). Scare beat, then shove
-   *  the monster back out past kill range so the chase re-opens. */
+   *  the monster back out past kill range so the chase re-opens. After
+   *  PURSUIT_CATCH.maxCatches it gives up for good instead of looping
+   *  forever — the chase should read as scary, not as an endless ordeal. */
   private onPursuitCatch(monster: Monster, playerPos: Vec2): void {
     const now = this.time.now;
     if (now < this.pursuitCatchCooldownUntil) return;
     this.pursuitCatchCooldownUntil = now + PURSUIT_CATCH.cooldownMs;
-    // Hold still after the shove — otherwise it just beelines back in and
-    // re-triggers this same beat on a loop the instant the cooldown clears.
-    this.pursuitStunnedUntil.set(monster, now + PURSUIT_CATCH.stunMs);
+    this.pursuitCatchCount += 1;
+    const givingUp = this.pursuitCatchCount >= PURSUIT_CATCH.maxCatches;
 
     this.audio.roar();
     this.cameras.main.flash(300, 120, 0, 0);
@@ -1009,6 +1062,15 @@ export class MainScene extends Phaser.Scene {
       playerPos.x + (dx / dist) * PURSUIT_CATCH.knockbackDistance,
       playerPos.y + (dy / dist) * PURSUIT_CATCH.knockbackDistance,
     );
+
+    if (givingUp) {
+      this.pursuitDisengaged.add(monster);
+      monster.freeze();
+    } else {
+      // Hold still after the shove — otherwise it just beelines back in and
+      // re-triggers this same beat on a loop the instant the cooldown clears.
+      this.pursuitStunnedUntil.set(monster, now + PURSUIT_CATCH.stunMs);
+    }
   }
 
   /** Fades the Stalker out, relocates it off-stage, and fades it back in —
