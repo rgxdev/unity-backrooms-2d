@@ -1,11 +1,16 @@
 import Phaser from "phaser";
 import {
   COLORS,
+  LEVEL_STYLES,
   MONSTER,
   PLAYER,
   SCENES,
+  STYLE_COLORS,
   TEXTURES,
   TILE_SIZE,
+  WALL_MASK,
+  WALL_MASK_COUNT,
+  type StyleColorSet,
 } from "@/game/config/constants";
 
 type Facing = "front" | "back";
@@ -34,10 +39,15 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   private generateTextures(): void {
-    this.makeCarpet(TEXTURES.floor, 0);
-    this.makeCarpet(TEXTURES.floorAlt, 1);
-    this.makeWall(TEXTURES.wall);
-    this.makeWallCrack(TEXTURES.wallCrack);
+    for (const style of LEVEL_STYLES) {
+      const c = STYLE_COLORS[style];
+      this.makeFloor(TEXTURES.floor(style), c);
+      this.makeWallCrack(TEXTURES.wallCrack(style), c);
+      this.makeExit(TEXTURES.exit(style), c);
+      for (let mask = 0; mask < WALL_MASK_COUNT; mask++) {
+        this.makeWallVariant(TEXTURES.wall(style, mask), c, mask);
+      }
+    }
     this.makePlayer(TEXTURES.player, "front", false);
     this.makePlayer(TEXTURES.playerWalk, "front", true);
     this.makePlayer(TEXTURES.playerBack, "back", false);
@@ -46,7 +56,6 @@ export class PreloadScene extends Phaser.Scene {
     this.makeMonster(TEXTURES.monsterWalk, "front", true);
     this.makeMonster(TEXTURES.monsterBack, "back", false);
     this.makeMonster(TEXTURES.monsterBackWalk, "back", true);
-    this.makeExit(TEXTURES.exit);
     this.makeHole(TEXTURES.hole);
     this.makeRubble(TEXTURES.rubble);
   }
@@ -94,110 +103,175 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   /**
-   * Woven-carpet floor tile. A deterministic 2px thread weave (alternating
-   * light/dark strands) plus fine speckle dither gives a soft hand-woven
-   * texture instead of a flat colour block. `variant` shifts the weave phase
-   * so neighbouring tiles read as one continuous rug rather than a repeating
-   * stamp.
+   * Seamless floor tile — a single continuous surface (per the wiki: Level
+   * 0's carpet is "one continuous piece", and a warehouse slab pours the
+   * same way). No colour-alternated checker stamp; the weave/mottle pattern
+   * is periodic within the tile so edges line up perfectly from one stamp to
+   * the next, and the only variation is fine speckle dither — small grain,
+   * not a grid of blocks.
    */
-  private makeCarpet(key: string, variant: number): void {
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
-    const base = variant === 0 ? COLORS.floor : COLORS.floorAlt;
-    this.px(g, base, 0, 0, TILE_SIZE, TILE_SIZE);
-
-    const cell = 4;
-    for (let y = 0; y < TILE_SIZE; y += cell) {
-      for (let x = 0; x < TILE_SIZE; x += cell) {
-        const warp = (x / cell + variant) % 2 === 0;
-        // Horizontal thread across the top of the cell, vertical down the side.
-        this.px(g, warp ? COLORS.floorWeaveHi : COLORS.floorWeaveLo, x, y, cell, 1, 0.55);
-        this.px(g, warp ? COLORS.floorWeaveLo : COLORS.floorWeaveHi, x, y, 1, cell, 0.55);
-      }
-    }
-
-    // Fine speckle dither breaks up the regular weave so it reads as woven
-    // fabric rather than a printed grid.
-    for (let y = 0; y < TILE_SIZE; y++) {
-      for (let x = 0; x < TILE_SIZE; x++) {
-        const n = this.noise(x + variant * 97, y);
-        if (n > 0.93) this.px(g, COLORS.floorWeaveHi, x, y, 1, 1, 0.4);
-        else if (n < 0.06) this.px(g, COLORS.floorWeaveLo, x, y, 1, 1, 0.35);
-      }
-    }
-
-    // Faint tile seam so the grid stays legible under the fog.
-    this.px(g, COLORS.floorSeam, 0, 0, TILE_SIZE, 1, 0.25);
-    this.px(g, COLORS.floorSeam, 0, 0, 1, TILE_SIZE, 0.25);
-    g.generateTexture(key, TILE_SIZE, TILE_SIZE);
-    g.destroy();
-  }
-
-  /**
-   * Worn plaster wall block. A soft multi-band bevel (two highlight steps,
-   * two shadow steps) reads as a rounded volume rather than a flat stamped
-   * square, and speckle dither breaks up the once-uniform wallpaper stripes
-   * so it feels hand-painted instead of tiled.
-   */
-  private makeWall(key: string): void {
+  private makeFloor(key: string, c: StyleColorSet): void {
     const g = this.make.graphics({ x: 0, y: 0 }, false);
     const t = TILE_SIZE;
-    this.px(g, COLORS.wall, 0, 0, t, t);
+    this.px(g, c.floor, 0, 0, t, t);
 
-    // Soft vertical wallpaper stripes — thinner and lower contrast than a
-    // hard block edge.
-    for (let x = 3; x < t; x += 7) {
-      this.px(g, COLORS.wallStripe, x, 2, 1, t - 4, 0.35);
-    }
-
-    // Speckle dither — irregular plaster grain instead of a flat fill.
-    for (let y = 0; y < t; y++) {
-      for (let x = 0; x < t; x++) {
-        const n = this.noise(x + 401, y + 401);
-        if (n > 0.94) this.px(g, COLORS.wallSpeckleHi, x, y, 1, 1, 0.5);
-        else if (n < 0.05) this.px(g, COLORS.wallSpeckleLo, x, y, 1, 1, 0.4);
+    switch (c.floorPattern) {
+      case "weave": {
+        // Berber-carpet thread weave — cell size divides the tile evenly so
+        // the weave phase is continuous across tile boundaries.
+        const cell = 4;
+        for (let y = 0; y < t; y += cell) {
+          for (let x = 0; x < t; x += cell) {
+            const warp = (x / cell) % 2 === 0;
+            this.px(g, warp ? c.floorWeaveHi : c.floorWeaveLo, x, y, cell, 1, 0.5);
+            this.px(g, warp ? c.floorWeaveLo : c.floorWeaveHi, x, y, 1, cell, 0.5);
+          }
+        }
+        break;
+      }
+      case "concrete": {
+        // Broad, blotchy poured-concrete mottling instead of a fine weave.
+        const cell = 8;
+        for (let y = 0; y < t; y += cell) {
+          for (let x = 0; x < t; x += cell) {
+            if (this.noise(x + c.seed, y + c.seed) > 0.55) {
+              this.px(g, c.floorWeaveLo, x, y, cell, cell, 0.14);
+            }
+          }
+        }
+        break;
+      }
+      case "tile": {
+        // Pristine ceramic sub-tiles with thin grout lines — a real seamed
+        // material, not a jarring two-colour checker.
+        const cell = 16;
+        for (let y = 0; y <= t; y += cell) this.px(g, c.accent, 0, y, t, 1, 0.4);
+        for (let x = 0; x <= t; x += cell) this.px(g, c.accent, x, 0, 1, t, 0.4);
+        break;
       }
     }
 
-    // Two-step bevel: catch-light along top/left fading into the base tone,
-    // shadow along bottom/right fading in from the base — a soft rounded
-    // volume rather than one hard highlight/shadow line.
-    this.px(g, COLORS.wallHi, 0, 0, t, 1, 0.9);
-    this.px(g, COLORS.wallHi2, 0, 1, t, 1, 0.6);
-    this.px(g, COLORS.wallHi, 0, 0, 1, t, 0.9);
-    this.px(g, COLORS.wallHi2, 1, 0, 1, t, 0.6);
-    this.px(g, COLORS.wallShade2, 0, t - 2, t, 1, 0.6);
-    this.px(g, COLORS.wallShade, 0, t - 1, t, 1, 0.85);
-    this.px(g, COLORS.wallShade2, t - 2, 0, 1, t, 0.6);
-    this.px(g, COLORS.wallShade, t - 1, 0, 1, t, 0.85);
+    // Fine speckle dither — small grain, breaks up the pattern into
+    // something that reads as "pixels", not a flat stamped block.
+    for (let y = 0; y < t; y++) {
+      for (let x = 0; x < t; x++) {
+        const n = this.noise(x, y + c.seed);
+        if (n > 0.93) this.px(g, c.floorWeaveHi, x, y, 1, 1, 0.35);
+        else if (n < 0.05) this.px(g, c.floorStain, x, y, 1, 1, 0.3);
+      }
+    }
 
-    // Dark baseboard grout so stacked walls seam cleanly, corners softened.
-    this.rr(g, COLORS.wallDark, 0, t - 3, t, 3, 0.5);
     g.generateTexture(key, t, t);
     g.destroy();
   }
 
   /**
-   * A wall tile fractured by whatever broke through nearby — same worn
-   * plaster base as {@link makeWall}, plus dark jagged crack lines and a
-   * chip of missing plaster. Dressed around the exit niche so the breach
-   * reads as real damage, not just a differently-coloured tile.
+   * The decorative surface layer shared by every wall variant of a style
+   * (base fill, pattern detail, speckle grain) — factored out so the 16
+   * autotile masks and the dressed exit-niche crack tile stay pixel-for-pixel
+   * consistent with each other.
    */
-  private makeWallCrack(key: string): void {
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
+  private drawWallSurface(g: Phaser.GameObjects.Graphics, c: StyleColorSet): void {
     const t = TILE_SIZE;
-    this.px(g, COLORS.wall, 0, 0, t, t);
-    for (let x = 3; x < t; x += 7) {
-      this.px(g, COLORS.wallStripe, x, 2, 1, t - 4, 0.35);
+    this.px(g, c.wall, 0, 0, t, t);
+
+    switch (c.wallPattern) {
+      case "wallpaper":
+      case "concrete":
+        for (let x = 3; x < t; x += c.wallStripeGap) {
+          this.px(g, c.wallStripe, x, 2, 1, t - 4, 0.35);
+        }
+        break;
+      case "pipes":
+        // A pair of rusted pipes running the length of the tunnel, with a
+        // cylindrical highlight/shadow band for volume.
+        for (const py of [8, 20]) {
+          this.px(g, c.accent2, 0, py - 1, t, 5, 0.9);
+          this.px(g, c.accent, 0, py, t, 3, 1);
+          this.px(g, c.wallSpeckleHi, 0, py, t, 1, 0.5);
+          this.px(g, c.accent2, 0, py + 3, t, 1, 0.7);
+        }
+        break;
+      case "tile":
+        // Small ceramic sub-tiles with grout lines.
+        for (let y = 0; y <= t; y += 8) this.px(g, c.accent, 0, y, t, 1, 0.5);
+        for (let x = 0; x <= t; x += 8) this.px(g, c.accent, x, 0, 1, t, 0.5);
+        break;
+      case "hazard":
+        // A low hazard-tape band of alternating diagonal-cut stripes.
+        this.px(g, c.wallShade, 0, t - 11, t, 7, 0.9);
+        for (let x = -6; x < t; x += 6) {
+          this.px(g, c.accent, x, t - 11, 3, 7, 0.95);
+        }
+        break;
     }
+
     for (let y = 0; y < t; y++) {
       for (let x = 0; x < t; x++) {
-        const n = this.noise(x + 401, y + 401);
-        if (n > 0.94) this.px(g, COLORS.wallSpeckleHi, x, y, 1, 1, 0.5);
-        else if (n < 0.05) this.px(g, COLORS.wallSpeckleLo, x, y, 1, 1, 0.4);
+        const n = this.noise(x + c.seed, y + c.seed);
+        if (n > 0.94) this.px(g, c.wallSpeckleHi, x, y, 1, 1, 0.5);
+        else if (n < 0.05) this.px(g, c.wallSpeckleLo, x, y, 1, 1, 0.4);
       }
     }
-    this.px(g, COLORS.wallHi, 0, 0, t, 1, 0.9);
-    this.px(g, COLORS.wallShade, 0, t - 1, t, 1, 0.85);
+  }
+
+  /**
+   * One baked wall slab for a given 4-bit neighbour mask (see
+   * {@link WALL_MASK}). The base fill/stripe/speckle is identical for every
+   * mask so a solid run of wall tiles blends into one continuous surface;
+   * the bevel/trim is only drawn on sides whose bit is set — i.e. only where
+   * that face is actually exposed to a room — so interior wall mass never
+   * shows a per-tile outline. A fully-open mask (a lone pillar) gets trim on
+   * all four sides and reads as a distinct column, exactly as it should.
+   */
+  private makeWallVariant(key: string, c: StyleColorSet, mask: number): void {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    const t = TILE_SIZE;
+    const north = (mask & WALL_MASK.NORTH) !== 0;
+    const east = (mask & WALL_MASK.EAST) !== 0;
+    const south = (mask & WALL_MASK.SOUTH) !== 0;
+    const west = (mask & WALL_MASK.WEST) !== 0;
+
+    this.drawWallSurface(g, c);
+
+    // Two-step bevel, drawn only on faces that actually border a room —
+    // this is what makes a bank of walls read as one connected mass instead
+    // of a checkerboard of outlined blocks.
+    if (north) {
+      this.px(g, c.wallHi, 0, 0, t, 1, 0.9);
+      this.px(g, c.wallHi2, 0, 1, t, 1, 0.6);
+    }
+    if (west) {
+      this.px(g, c.wallHi, 0, 0, 1, t, 0.9);
+      this.px(g, c.wallHi2, 1, 0, 1, t, 0.6);
+    }
+    if (south) {
+      this.px(g, c.wallShade2, 0, t - 2, t, 1, 0.6);
+      this.px(g, c.wallShade, 0, t - 1, t, 1, 0.85);
+      // Dark baseboard grout where the wall actually meets a floor.
+      this.rr(g, c.wallDark, 0, t - 3, t, 3, 0.5);
+    }
+    if (east) {
+      this.px(g, c.wallShade2, t - 2, 0, 1, t, 0.6);
+      this.px(g, c.wallShade, t - 1, 0, 1, t, 0.85);
+    }
+
+    g.generateTexture(key, t, t);
+    g.destroy();
+  }
+
+  /**
+   * A wall tile fractured by whatever broke through nearby — same base as
+   * {@link makeWallVariant}, plus dark jagged crack lines and a chip of
+   * missing surface. Dressed around the exit niche so the breach reads as
+   * real damage, not just a differently-coloured tile.
+   */
+  private makeWallCrack(key: string, c: StyleColorSet): void {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    const t = TILE_SIZE;
+    this.drawWallSurface(g, c);
+    this.px(g, c.wallHi, 0, 0, t, 1, 0.9);
+    this.px(g, c.wallShade, 0, t - 1, t, 1, 0.85);
 
     // Jagged crack lines, forking from one corner toward the centre.
     const crack: Array<[number, number]> = [
@@ -210,12 +284,12 @@ export class PreloadScene extends Phaser.Scene {
       for (let s = 0; s <= steps; s++) {
         const x = Math.round(x0 + ((x1 - x0) * s) / steps);
         const y = Math.round(y0 + ((y1 - y0) * s) / steps);
-        this.px(g, COLORS.wallDark, x, y, 1, 1, 0.8);
+        this.px(g, c.wallDark, x, y, 1, 1, 0.8);
       }
     }
-    // A small chip of missing plaster near the fork.
-    this.rr(g, COLORS.wallShade, 16, 8, 5, 4, 0.9);
-    this.px(g, COLORS.wallDark, 17, 9, 3, 2, 0.6);
+    // A small chip of missing surface near the fork.
+    this.rr(g, c.wallShade, 16, 8, 5, 4, 0.9);
+    this.px(g, c.wallDark, 17, 9, 3, 2, 0.6);
 
     g.generateTexture(key, t, t);
     g.destroy();
@@ -238,8 +312,8 @@ export class PreloadScene extends Phaser.Scene {
     for (const [x, y, w, h] of chunks) {
       g.fillStyle(COLORS.shadow, 0.25);
       g.fillEllipse(x + w / 2, y + h, w, 2);
-      this.rr(g, COLORS.wallShade, x, y, w, h, 0.95);
-      this.px(g, COLORS.wallDark, x, y + h - 1, w, 1, 0.6);
+      this.rr(g, COLORS.rubbleShade, x, y, w, h, 0.95);
+      this.px(g, COLORS.rubbleDark, x, y + h - 1, w, 1, 0.6);
     }
     g.generateTexture(key, t, t);
     g.destroy();
@@ -372,17 +446,15 @@ export class PreloadScene extends Phaser.Scene {
    * drawn to match the wallpapered wall block (round bevel, dither) so it
    * hides in plain sight until it flickers. The scene pulses its alpha.
    */
-  private makeExit(key: string): void {
+  private makeExit(key: string, c: StyleColorSet): void {
     const t = TILE_SIZE;
     const g = this.make.graphics({ x: 0, y: 0 }, false);
 
-    // Wall face (matches the surrounding wallpaper so it hides in plain sight).
-    this.px(g, COLORS.wall, 0, 0, t, t);
-    for (let x = 3; x < t; x += 7) {
-      this.px(g, COLORS.wallStripe, x, 2, 1, t - 4, 0.35);
-    }
-    this.px(g, COLORS.wallHi, 0, 0, t, 1, 0.9);
-    this.px(g, COLORS.wallShade, 0, t - 1, t, 1, 0.85);
+    // Wall face (matches the surrounding wall material so it hides in plain
+    // sight until it flickers).
+    this.drawWallSurface(g, c);
+    this.px(g, c.wallHi, 0, 0, t, 1, 0.9);
+    this.px(g, c.wallShade, 0, t - 1, t, 1, 0.85);
 
     // Bright vertical crack of light down the middle — the seam to the next
     // level, with a soft glow bleeding off both sides.

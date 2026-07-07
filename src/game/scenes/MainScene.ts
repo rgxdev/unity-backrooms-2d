@@ -10,6 +10,7 @@ import {
   TEXTURES,
   TILE_SIZE,
   VISIBILITY,
+  WALL_MASK,
   ZONE_TINT,
 } from "@/game/config/constants";
 import type { Difficulty } from "@/lib/schemas/settings";
@@ -207,25 +208,40 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
+  /** 4-bit autotile mask for a wall tile: a bit is set when that cardinal
+   *  neighbour is NOT a wall, i.e. this face is exposed to a room and should
+   *  get a bevel/trim. Walls deep inside a solid mass (mask 0) render as a
+   *  flat, seamless slab instead of an individually outlined block. */
+  private wallMask(x: number, y: number): number {
+    let mask = 0;
+    if (!this.isWallTile(x, y - 1)) mask |= WALL_MASK.NORTH;
+    if (!this.isWallTile(x + 1, y)) mask |= WALL_MASK.EAST;
+    if (!this.isWallTile(x, y + 1)) mask |= WALL_MASK.SOUTH;
+    if (!this.isWallTile(x - 1, y)) mask |= WALL_MASK.WEST;
+    return mask;
+  }
+
   private buildTiles(): void {
     this.walls = this.physics.add.staticGroup();
     const { width, height, tiles } = this.level;
+    const style = this.theme.style;
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const px = x * TILE_SIZE + TILE_SIZE / 2;
         const py = y * TILE_SIZE + TILE_SIZE / 2;
         const kind = tiles[y * width + x];
         if (kind === TileKind.Wall) {
-          (this.walls.create(px, py, TEXTURES.wall) as Phaser.GameObjects.Image)
-            .setTint(this.theme.tint);
+          const key = TEXTURES.wall(style, this.wallMask(x, y));
+          (this.walls.create(px, py, key) as Phaser.GameObjects.Image).setTint(
+            this.theme.tint,
+          );
         } else if (kind === TileKind.Hole) {
           // Bottomless pit — no collider, but lethal to step on (see update()).
           this.add.image(px, py, TEXTURES.hole).setDepth(-9);
         } else {
-          const alt = (x + y) % 2 === 0;
           const zoneTint = this.floorTintByTile[y * width + x] ?? -1;
           this.add
-            .image(px, py, alt ? TEXTURES.floor : TEXTURES.floorAlt)
+            .image(px, py, TEXTURES.floor(style))
             .setTint(zoneTint >= 0 ? zoneTint : this.theme.tint)
             .setDepth(-10);
         }
@@ -316,7 +332,9 @@ export class MainScene extends Phaser.Scene {
     const exit = this.level.exit;
     if (!exit) return;
     const c = this.centreOf(exit.x, exit.y);
-    const door = this.add.image(c.x, c.y, TEXTURES.exit).setDepth(-5);
+    const door = this.add
+      .image(c.x, c.y, TEXTURES.exit(this.theme.style))
+      .setDepth(-5);
     // Restless flicker — the seam of light guttering like a dying tube.
     this.tweens.add({
       targets: door,
@@ -349,7 +367,7 @@ export class MainScene extends Phaser.Scene {
       const nc = this.centreOf(nx, ny);
       if (this.isWallTile(nx, ny)) {
         this.add
-          .image(nc.x, nc.y, TEXTURES.wallCrack)
+          .image(nc.x, nc.y, TEXTURES.wallCrack(this.theme.style))
           .setTint(this.theme.tint)
           .setDepth(1);
       } else {
