@@ -14,15 +14,25 @@ export type IsWallFn = (tileX: number, tileY: number) => boolean;
 export class VisibilitySystem {
   readonly width: number;
   readonly height: number;
-  readonly radius: number;
+  private currentRadius: number;
 
   private readonly state: Uint8Array;
 
   constructor(width: number, height: number, radius: number) {
     this.width = width;
     this.height = height;
-    this.radius = radius;
+    this.currentRadius = radius;
     this.state = new Uint8Array(width * height);
+  }
+
+  get radius(): number {
+    return this.currentRadius;
+  }
+
+  /** Temporarily widen (or restore) the reveal radius — used by the Almond
+   *  Water pickup's brief vision boost. Takes effect on the next update(). */
+  setRadius(radius: number): void {
+    this.currentRadius = radius;
   }
 
   private index(x: number, y: number): number {
