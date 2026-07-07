@@ -3,6 +3,9 @@ import {
   BLACKOUT_MIN_ALPHA,
   DIFFICULTY_CONFIG,
   DREAD,
+  EXIT_DREAD,
+  JUMPSCARE,
+  MONSTER_TINT,
   SCENES,
   TEXTURES,
   TILE_SIZE,
@@ -73,6 +76,13 @@ export class MainScene extends Phaser.Scene {
   private lastTileX = -1;
   private lastTileY = -1;
   private fpsText: Phaser.GameObjects.Text | null = null;
+
+  /** A transient "flash into view for a few seconds" encounter, distinct
+   *  from the persistent patrol/pursuer monsters. */
+  private jumpscareMonster: Monster | null = null;
+  private jumpscareNextAt = -1;
+  private jumpscareDespawnAt = 0;
+  private jumpscareAttacked = false;
 
   constructor() {
     super(SCENES.main);
@@ -161,6 +171,10 @@ export class MainScene extends Phaser.Scene {
     this.lastTileY = -1;
     this.discoveredZones.clear();
     this.fpsText = null;
+    this.jumpscareMonster = null;
+    this.jumpscareNextAt = -1;
+    this.jumpscareDespawnAt = 0;
+    this.jumpscareAttacked = false;
   }
 
   private isWallTile(x: number, y: number): boolean {
@@ -274,6 +288,12 @@ export class MainScene extends Phaser.Scene {
     };
   }
 
+  /** Pursuer reads hottest (it's the one that ends the level); everything
+   *  else patrols as the neutral default. */
+  private monsterTint(id: string): number {
+    return id === "pursuer" ? MONSTER_TINT.pursuer : MONSTER_TINT.lurker;
+  }
+
   private spawnMonsters(): void {
     this.monsters = this.level.monsters.map((spawn) => {
       const origin = this.centreOf(spawn.x, spawn.y);
@@ -284,6 +304,7 @@ export class MainScene extends Phaser.Scene {
         origin.y,
         waypoints,
         DEFAULT_MONSTER_TUNING,
+        this.monsterTint(spawn.id),
       );
       monster.setDepth(90);
       this.physics.add.collider(monster, this.walls);
@@ -306,6 +327,35 @@ export class MainScene extends Phaser.Scene {
       repeatDelay: 90,
       ease: "Sine.InOut",
     });
+    this.dressExitNiche(exit);
+  }
+
+  /** Crack overlays on the real wall tiles around the breach, and a little
+   *  rubble on the room-side floor tile it broke into — so the exit reads
+   *  as actual damage to the wall, not a differently-coloured tile. */
+  private dressExitNiche(exit: { x: number; y: number }): void {
+    const deltas: Vec2[] = [
+      { x: 1, y: 0 },
+      { x: -1, y: 0 },
+      { x: 0, y: 1 },
+      { x: 0, y: -1 },
+    ];
+    for (const d of deltas) {
+      const nx = exit.x + d.x;
+      const ny = exit.y + d.y;
+      if (nx < 0 || ny < 0 || nx >= this.level.width || ny >= this.level.height) {
+        continue;
+      }
+      const nc = this.centreOf(nx, ny);
+      if (this.isWallTile(nx, ny)) {
+        this.add
+          .image(nc.x, nc.y, TEXTURES.wallCrack)
+          .setTint(this.theme.tint)
+          .setDepth(1);
+      } else {
+        this.add.image(nc.x, nc.y, TEXTURES.rubble).setDepth(-8);
+      }
+    }
   }
 
   private readonly handleResize = (): void => {
@@ -342,6 +392,7 @@ export class MainScene extends Phaser.Scene {
   private updateAi(time: number): void {
     if (this.ended) {
       for (const m of this.monsters) m.freeze();
+      this.jumpscareMonster?.freeze();
       return;
     }
     if (this.monsters.length === 0) return;
@@ -363,11 +414,17 @@ export class MainScene extends Phaser.Scene {
 
     const playerPos: Vec2 = { x: this.player.x, y: this.player.y };
     switch (this.phase) {
-      case GamePhase.Ambient:
-        for (const m of this.monsters) m.tickAmbient();
-        this.presenceCue(time, playerPos);
+      case GamePhase.Ambient: {
+        // Monster activity ramps up the closer the player gets to the exit.
+        const proximity = this.exitProximity(tile.x, tile.y);
+        const speedBoost = 1 + proximity * EXIT_DREAD.maxSpeedBoost;
+        for (const m of this.monsters) m.tickAmbient(speedBoost);
+        this.presenceCue(time, playerPos, proximity);
+        this.updateJumpscare(time, playerPos, proximity);
         break;
+      }
       case GamePhase.Pursuit: {
+        this.despawnJumpscare();
         let nearest = Infinity;
         for (const m of this.monsters) {
           m.pursue(playerPos, this.pursuitSpeed);
@@ -379,6 +436,7 @@ export class MainScene extends Phaser.Scene {
       }
       case GamePhase.Escaped:
         for (const m of this.monsters) m.freeze();
+        this.jumpscareMonster?.freeze();
         break;
     }
   }
@@ -459,9 +517,11 @@ export class MainScene extends Phaser.Scene {
     this.scheduleRestart(2800);
   }
 
-  /** Occasional "you can hear it" beat while the monster lurks nearby. */
-  private presenceCue(time: number, playerPos: Vec2): void {
-    if (time - this.lastCueAt < DREAD.cueCooldownMs) return;
+  /** Occasional "you can hear it" beat while the monster lurks nearby — fires
+   *  more often the closer the player gets to the exit. */
+  private presenceCue(time: number, playerPos: Vec2, exitProximity: number): void {
+    const cooldown = DREAD.cueCooldownMs * (1 - exitProximity * (1 - EXIT_DREAD.minIntervalScale));
+    if (time - this.lastCueAt < cooldown) return;
     const nearest = Math.min(
       ...this.monsters.map((m) => m.distanceTo(playerPos)),
     );
@@ -477,6 +537,120 @@ export class MainScene extends Phaser.Scene {
       duration: 380,
       yoyo: true,
       ease: "Sine.InOut",
+    });
+  }
+
+  /** 0 (far away) to 1 (standing on it) — how close the player is to the exit. */
+  private exitProximity(tileX: number, tileY: number): number {
+    const exit = this.level.exit;
+    if (!exit) return 0;
+    const dx = tileX - exit.x;
+    const dy = tileY - exit.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    return Phaser.Math.Clamp(1 - dist / EXIT_DREAD.radiusTiles, 0, 1);
+  }
+
+  /**
+   * A monster flashes into view near the player for a few seconds, then
+   * vanishes — a jump-scare distinct from the persistent patrol/pursuer
+   * monsters. Above easy, getting too close during the window triggers an
+   * attack. Frequency ramps up near the exit.
+   */
+  private updateJumpscare(
+    time: number,
+    playerPos: Vec2,
+    exitProximity: number,
+  ): void {
+    if (this.jumpscareNextAt < 0) {
+      // First roll after level load — don't scare the player immediately.
+      this.jumpscareNextAt =
+        time + Phaser.Math.Between(JUMPSCARE.minIntervalMs, JUMPSCARE.maxIntervalMs);
+      return;
+    }
+
+    if (this.jumpscareMonster) {
+      const dist = this.jumpscareMonster.distanceTo(playerPos);
+      if (
+        !this.jumpscareAttacked &&
+        this.difficulty !== "easy" &&
+        dist <= JUMPSCARE.attackRadius
+      ) {
+        this.jumpscareAttacked = true;
+        this.audio.snarl();
+        this.cameras.main.flash(220, 120, 0, 0);
+        this.jumpscareMonster.pursue(playerPos, this.pursuitSpeed * 1.4);
+        if (this.lethal) this.onDeath();
+        // Despawn shortly after the attack regardless of outcome.
+        this.jumpscareDespawnAt = Math.min(this.jumpscareDespawnAt, time + 500);
+      }
+      if (time >= this.jumpscareDespawnAt) this.despawnJumpscare();
+      return;
+    }
+
+    if (time < this.jumpscareNextAt) return;
+    this.trySpawnJumpscare(time, exitProximity);
+    const scale = 1 - exitProximity * (1 - EXIT_DREAD.minIntervalScale);
+    const interval =
+      Phaser.Math.Between(JUMPSCARE.minIntervalMs, JUMPSCARE.maxIntervalMs) * scale;
+    this.jumpscareNextAt = time + interval;
+  }
+
+  /** Try a handful of candidate tiles in view range and spawn on the first
+   *  one that's walkable and actually visible to the player. */
+  private trySpawnJumpscare(time: number, exitProximity: number): void {
+    const origin = this.playerTile();
+    const isWall = (x: number, y: number) => this.isWallTile(x, y);
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Phaser.Math.FloatBetween(
+        JUMPSCARE.spawnMinRadiusTiles,
+        JUMPSCARE.spawnMaxRadiusTiles,
+      );
+      const tx = Math.round(origin.x + Math.cos(angle) * dist);
+      const ty = Math.round(origin.y + Math.sin(angle) * dist);
+      if (tx < 0 || ty < 0 || tx >= this.level.width || ty >= this.level.height) {
+        continue;
+      }
+      if (this.isWallTile(tx, ty) || this.isHoleTile(tx, ty)) continue;
+      if (!this.visibility.hasLineOfSight(origin.x, origin.y, tx, ty, isWall)) {
+        continue;
+      }
+
+      const c = this.centreOf(tx, ty);
+      const monster = new Monster(
+        this,
+        c.x,
+        c.y,
+        [],
+        DEFAULT_MONSTER_TUNING,
+        MONSTER_TINT.jumpscare,
+      );
+      monster.setDepth(90);
+      monster.setAlpha(0);
+      this.physics.add.collider(monster, this.walls);
+      this.tweens.add({ targets: monster, alpha: 1, duration: 220, ease: "Sine.Out" });
+
+      this.jumpscareMonster = monster;
+      this.jumpscareAttacked = false;
+      const visibleMs = Phaser.Math.Between(
+        JUMPSCARE.minVisibleMs,
+        JUMPSCARE.maxVisibleMs,
+      );
+      this.jumpscareDespawnAt = time + visibleMs;
+      this.audio.shriek(0.3 + exitProximity * 0.3);
+      return;
+    }
+  }
+
+  private despawnJumpscare(): void {
+    const monster = this.jumpscareMonster;
+    if (!monster) return;
+    this.jumpscareMonster = null;
+    this.tweens.add({
+      targets: monster,
+      alpha: 0,
+      duration: 250,
+      onComplete: () => monster.destroy(),
     });
   }
 
@@ -523,6 +697,22 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Soft vignette at the rim of the sight radius: tiles within the last
+   * `edgeFalloffTiles` of the reveal radius fade in gradually instead of
+   * popping fully clear, so the field of view reads as a gentle glow rather
+   * than a hard-edged disc.
+   */
+  private edgeFalloff(tileX: number, tileY: number): number {
+    const dx = tileX - this.lastTileX;
+    const dy = tileY - this.lastTileY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const radius = VISIBILITY.revealRadiusTiles;
+    const band = VISIBILITY.edgeFalloffTiles;
+    const t = (dist - (radius - band)) / band;
+    return Phaser.Math.Clamp(t, 0, 1);
+  }
+
   private refreshFog(): void {
     const width = this.level.width;
     for (let i = 0; i < this.fogState.length; i++) {
@@ -538,16 +728,28 @@ export class MainScene extends Phaser.Scene {
       if (this.fogState[i] === vis) continue;
       this.fogState[i] = vis;
       let alpha = FOG_ALPHA[vis] ?? 1;
+      if (vis === TileVisibility.Visible) {
+        const falloff = this.edgeFalloff(i % width, Math.floor(i / width));
+        alpha = falloff * VISIBILITY.dimAlpha;
+      }
       // Blackout Zones never fully light — keep a residual gloom.
       if (this.blackoutByTile[i] && alpha < BLACKOUT_MIN_ALPHA) {
         alpha = BLACKOUT_MIN_ALPHA;
       }
-      this.fogTiles[i]?.setAlpha(alpha);
+      const tile = this.fogTiles[i];
+      if (!tile) continue;
+      this.tweens.killTweensOf(tile);
+      this.tweens.add({
+        targets: tile,
+        alpha,
+        duration: VISIBILITY.fadeMs,
+        ease: "Sine.Out",
+      });
     }
   }
 
-  override update(time: number): void {
-    this.controller.update();
+  override update(time: number, delta: number): void {
+    this.controller.update(delta);
 
     const tileX = Math.floor(this.player.x / TILE_SIZE);
     const tileY = Math.floor(this.player.y / TILE_SIZE);
