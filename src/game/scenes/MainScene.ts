@@ -34,6 +34,7 @@ import {
   LAST_LEVEL_INDEX,
   type LevelTheme,
 } from "@/game/levels";
+import { addSoftVignette, SoftVignetteController } from "@/game/fx/SoftVignette";
 import { Player } from "@/game/entities/Player";
 import { Monster } from "@/game/entities/Monster";
 import { PlayerController } from "@/game/systems/PlayerController";
@@ -144,7 +145,7 @@ export class MainScene extends Phaser.Scene {
   private nextBlackoutAt = -1;
 
   /** Camera post-processing (WebGL only — no-ops gracefully otherwise). */
-  private vignetteFilter: Phaser.Filters.Vignette | null = null;
+  private vignetteFilter: SoftVignetteController | null = null;
   private barrelFilter: Phaser.Filters.Barrel | null = null;
 
   /** Scattered Almond Water pickups still on the floor. */
@@ -887,10 +888,12 @@ export class MainScene extends Phaser.Scene {
     if (this.game.renderer.type !== Phaser.WEBGL) return;
     try {
       const cam = this.cameras.main;
-      this.vignetteFilter = cam.filters.internal.addVignette(
+      this.vignetteFilter = addSoftVignette(
+        cam,
         0.5,
         0.5,
         FEAR.vignetteMaxRadius,
+        FEAR.vignetteFeather,
         FEAR.vignetteMinStrength,
         0x000000,
       );
@@ -1165,6 +1168,16 @@ export class MainScene extends Phaser.Scene {
     this.audio.updateHeartbeat(fear, time);
     const v = this.vignetteFilter;
     if (v) {
+      // The vignette's x/y are normalized to the camera's *own* viewport, not
+      // the world — a bounded camera can't always keep the player dead
+      // center (it clamps at maze edges), so a fixed 0.5/0.5 drifts off the
+      // player and crops the wrong side of the screen. Recenter every frame
+      // on the player's actual on-screen position instead.
+      const view = this.cameras.main.worldView;
+      const p = this.player;
+      v.x = Phaser.Math.Clamp((p.x - view.x) / view.width, 0, 1);
+      v.y = Phaser.Math.Clamp((p.y - view.y) / view.height, 0, 1);
+
       // The vignette is a camera-wide post filter — it darkens the flashlight
       // beam right along with everything else, so at high fear (a monster
       // close by) it was crushing the beam dark exactly when you'd want it

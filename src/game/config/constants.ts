@@ -17,8 +17,8 @@ export const PLAYER = {
 } as const;
 
 export const MONSTER = {
-  size: 22,
-  bodyInset: 4,
+  size: 40,
+  bodyInset: 10,
 } as const;
 
 /** Scripted-dread pacing knobs (see MonsterDirector). */
@@ -187,6 +187,9 @@ export const FEAR = {
   vignetteMaxStrength: 0.7,
   vignetteMaxRadius: 0.85,
   vignetteMinRadius: 0.42,
+  // Width of the darken gradient band (normalized, aspect-corrected) — wide
+  // enough that the edge reads as a soft fade, never a hard ring.
+  vignetteFeather: 0.4,
 } as const;
 
 /** Random ambient power-flicker beat: the lights gutter and the fog swallows
@@ -470,15 +473,15 @@ export const COLORS = {
   playerPants: 0x3b3a58,
   playerPantsShade: 0x2b2a42,
   playerOutline: 0x1a180f,
-  // Lurking monster
-  monsterBody: 0x39304a,
-  monsterBodyHi: 0x4a3f5e,
-  monsterBodyShade: 0x271f33,
-  monsterLimb: 0x2b2338,
-  monsterEye: 0xff5230,
-  monsterEyeGlow: 0xff8a5c,
-  monsterMaw: 0xe8e2c4,
-  monsterMawShade: 0xb8b190,
+  // Lurking monster — pale, gaunt, bald-skulled thing
+  monsterBody: 0xc9bb8c,
+  monsterBodyHi: 0xe0d4a6,
+  monsterBodyShade: 0x8f8362,
+  monsterLimb: 0xaea070,
+  monsterEye: 0x0b0906,
+  monsterEyeGlow: 0x2a2419,
+  monsterMaw: 0xe8e0c8,
+  monsterMawShade: 0x1c1712,
   shadow: 0x000000,
   // Debris scattered by the exit breach — neutral, independent of level style.
   rubbleShade: 0x726a5c,

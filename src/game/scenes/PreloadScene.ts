@@ -842,59 +842,94 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   /**
-   * Lurking monster sprite: a hunched, rounded dark body with glowing eyes
-   * and a pale maw — reads as a threat at a glance and keeps a soft organic
-   * silhouette instead of a jagged block. `facing` swaps the glowing-eyes
-   * face (front) for a ridged, faceless hunch (back) — worse to see chasing
-   * away from you than toward you. `stride` offsets its limbs into a
-   * lurching mid-step pose for the second walk-cycle frame.
+   * Lurking monster sprite: a gaunt, pale-skinned thing with an oversized
+   * bald skull, huge black eye-sockets and a wide jagged grin, on a scrawny
+   * ribbed torso with long spindly arms hanging past its knees — reads as
+   * unmistakably wrong at a glance. `facing` swaps the face (front) for a
+   * faceless bald dome with a spine ridge (back) — worse to see chasing away
+   * from you than toward you. `stride` offsets its arms/legs into a lurching
+   * mid-step pose for the second walk-cycle frame.
    */
   private makeMonster(key: string, facing: Facing, stride: boolean): void {
     const s = MONSTER.size;
     const g = this.make.graphics({ x: 0, y: 0 }, false);
 
-    // Rounded keyline silhouette.
-    this.rr(g, COLORS.playerOutline, 2, 1, s - 4, s - 1, 1);
-    this.rr(g, COLORS.playerOutline, 1, 3, s - 2, s - 4, 1);
-
     // Contact shadow, grounding it against the floor.
     g.fillStyle(COLORS.shadow, 0.35);
-    g.fillEllipse(s / 2, s - 1, s - 5, 3);
+    g.fillEllipse(s / 2, s - 1, s - 10, 4);
 
-    // Hunched body, shaded on the right, softly lit on the left.
-    this.rr(g, COLORS.monsterBody, 3, 2, s - 6, s - 3, 1);
-    this.px(g, COLORS.monsterBodyHi, 4, 3, 2, s - 7, 0.5);
-    this.px(g, COLORS.monsterBodyShade, s - 6, 2, 3, s - 3, 0.8);
-    // Shoulders / brow ridge.
-    this.rr(g, COLORS.monsterBody, 2, 4, s - 4, 4, 1);
-
-    // Spindly limbs poking out the sides — offset opposite ways for the
-    // stride frame so the lurch reads as alternating steps.
+    // Long, two-jointed arms hanging well past the knees, bent outward at
+    // the elbow — offset opposite ways for the stride frame so the lurch
+    // reads as alternating steps. Drawn before the torso so the shoulders
+    // overlap them.
     const limbShift = stride ? 1 : 0;
-    this.px(g, COLORS.monsterLimb, 1, s / 2 - 1 - limbShift, 2, 5);
-    this.px(g, COLORS.monsterLimb, s - 3, s / 2 - 1 + limbShift, 2, 5);
+    this.px(g, COLORS.monsterLimb, 7, 15 - limbShift, 3, 10); // left upper arm
+    this.px(g, COLORS.monsterLimb, 4, 24 - limbShift, 3, 11); // left forearm
+    this.px(g, COLORS.monsterLimb, s - 10, 15 + limbShift, 3, 10); // right upper arm
+    this.px(g, COLORS.monsterLimb, s - 7, 24 + limbShift, 3, 11); // right forearm
+    // Long-fingered clawed hands at the end of each arm.
+    this.px(g, COLORS.monsterBodyShade, 2, 34 - limbShift, 5, 3, 0.9);
+    this.px(g, COLORS.monsterBodyShade, s - 7, 34 + limbShift, 5, 3, 0.9);
+    for (let i = 0; i < 3; i++) {
+      this.px(g, COLORS.monsterEyeGlow, 2 + i * 2, 37 - limbShift, 1, 2, 0.7);
+      this.px(g, COLORS.monsterEyeGlow, s - 7 + i * 2, 37 + limbShift, 1, 2, 0.7);
+    }
+
+    // Bald, oversized skull.
+    this.rr(g, COLORS.playerOutline, 8, 0, 24, 16, 1);
+    this.rr(g, COLORS.monsterBody, 9, 1, 22, 14, 1);
+    this.px(g, COLORS.monsterBodyHi, 10, 1, 3, 10, 0.45);
+    this.px(g, COLORS.monsterBodyShade, 27, 1, 3, 14, 0.7);
 
     if (facing === "front") {
-      // Glowing eyes with a soft outer bloom.
-      this.px(g, COLORS.monsterEyeGlow, 3, 6, 4, 4, 0.35);
-      this.px(g, COLORS.monsterEyeGlow, s - 7, 6, 4, 4, 0.35);
-      this.px(g, COLORS.monsterEye, 4, 7, 2, 2);
-      this.px(g, COLORS.monsterEye, s - 6, 7, 2, 2);
-      this.px(g, 0xffffff, 4, 7, 1, 1, 0.85);
-      this.px(g, 0xffffff, s - 6, 7, 1, 1, 0.85);
+      // Huge black eye-sockets, sunk into the skull with a soft dark rim.
+      this.px(g, COLORS.monsterEyeGlow, 11, 3, 9, 11, 0.35);
+      this.px(g, COLORS.monsterEyeGlow, 20, 3, 9, 11, 0.35);
+      this.rr(g, COLORS.monsterEye, 12, 4, 7, 10, 1);
+      this.rr(g, COLORS.monsterEye, 21, 4, 7, 10, 1);
 
-      // Jagged pale maw with a shaded underside.
-      this.px(g, COLORS.monsterMawShade, 5, s - 8, s - 10, 3, 0.6);
-      this.px(g, COLORS.monsterMaw, 5, s - 9, s - 10, 2);
-      for (let i = 0; i < 3; i++) {
-        this.px(g, COLORS.monsterBodyShade, 7 + i * 3, s - 9, 1, 2);
+      // Wide jagged grin, interlocking teeth top and bottom.
+      this.px(g, COLORS.monsterMawShade, 11, 13, 18, 5, 1);
+      for (let i = 0; i < 5; i++) {
+        this.px(g, COLORS.monsterMaw, 11 + i * 4, 13, 2, 2);
+      }
+      for (let i = 0; i < 4; i++) {
+        this.px(g, COLORS.monsterMaw, 13 + i * 4, 16, 2, 2);
       }
     } else {
-      // Faceless hunch: a ridge of jagged spine bumps instead of eyes/maw.
+      // Faceless bald dome: a ridge of jagged bumps down the back instead.
       for (let i = 0; i < 3; i++) {
-        this.rr(g, COLORS.monsterBodyShade, 5 + i * 4, 4 + i, 3, 3, 0.7);
+        this.rr(g, COLORS.monsterBodyShade, 14 + i * 5, 3 + i, 4, 4, 0.7);
       }
     }
+
+    // Neck, bridging the skull down into the torso.
+    this.px(g, COLORS.monsterBodyShade, 17, 15, 6, 3, 0.5);
+
+    // Gaunt ribbed torso — narrower than the skull to sell the scrawny frame.
+    this.rr(g, COLORS.playerOutline, 13, 15, 14, 15, 1);
+    this.rr(g, COLORS.monsterBody, 14, 16, 12, 12, 1);
+    this.px(g, COLORS.monsterBodyHi, 14, 16, 2, 12, 0.35);
+    for (let i = 0; i < 4; i++) {
+      this.px(g, COLORS.monsterBodyShade, 15, 18 + i * 2, 9, 1, 0.4);
+    }
+
+    if (facing === "back") {
+      // Spine ridge continuing down from the skull bumps.
+      for (let i = 0; i < 3; i++) {
+        this.rr(g, COLORS.monsterBodyShade, 17, 18 + i * 3, 6, 2, 0.5);
+      }
+    }
+
+    // Thin, slightly bent legs, split so the stride frame can offset them
+    // into a mid-step.
+    this.rr(g, COLORS.playerOutline, 13, 27, 14, 13, 1);
+    this.rr(g, COLORS.monsterBody, 15, 28 - limbShift, 4, 10, 1);
+    this.rr(g, COLORS.monsterBody, 21, 28 + limbShift, 4, 10, 1);
+    this.px(g, COLORS.monsterBodyShade, 24, 29 + limbShift, 1, 9, 0.5);
+    // Small feet.
+    this.px(g, COLORS.monsterBodyShade, 14, 37 - limbShift, 6, 2, 0.6);
+    this.px(g, COLORS.monsterBodyShade, 20, 37 + limbShift, 6, 2, 0.6);
 
     g.generateTexture(key, s, s);
     g.destroy();
