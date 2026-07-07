@@ -293,6 +293,148 @@ export class AudioManager {
     this.tone(190, 0.8, intensity * 0.4, "sine", pan);
   }
 
+  /** A wet, cracking guttural moan drawn out over a second and a half —
+   *  something in pain, or pretending to be. Distinct from {@link growl}'s
+   *  steady lurking presence: this one wavers, like a throat straining. */
+  moan(intensity = 0.4, pan = 0): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(500, ctx.currentTime);
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    const t0 = ctx.currentTime;
+    osc.frequency.setValueAtTime(85, t0);
+    // Wavering pitch — an uneven series of small ramps instead of a clean
+    // glide reads as a strained, involuntary sound rather than a synth swell.
+    osc.frequency.linearRampToValueAtTime(65, t0 + 0.3);
+    osc.frequency.linearRampToValueAtTime(95, t0 + 0.55);
+    osc.frequency.linearRampToValueAtTime(55, t0 + 0.9);
+    osc.frequency.linearRampToValueAtTime(70, t0 + 1.3);
+    osc.frequency.exponentialRampToValueAtTime(30, t0 + 1.6);
+    const peak = Math.max(0.0001, intensity * this.masterVolume);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.2);
+    gain.gain.setValueAtTime(peak, t0 + 1.1);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.65);
+    osc.connect(filter).connect(gain);
+    this.connectOut(gain, ctx, pan);
+    osc.start();
+    osc.stop(t0 + 1.7);
+  }
+
+  /** A dry, wheezing giggle — three to five quick warbling blips that pitch
+   *  up and down unevenly. Playful register, wrong context: unsettling
+   *  precisely because it sounds amused. Distinct from every scream/growl
+   *  cue, which all read as hostile rather than delighted. */
+  laugh(intensity = 0.3, pan = 0): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    const beats = 3 + Math.floor(Math.random() * 3);
+    let t = ctx.currentTime;
+    for (let i = 0; i < beats; i++) {
+      const gain = ctx.createGain();
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      const base = 300 + Math.random() * 220;
+      osc.frequency.setValueAtTime(base, t);
+      osc.frequency.exponentialRampToValueAtTime(base * 1.5, t + 0.06);
+      osc.frequency.exponentialRampToValueAtTime(base * 0.7, t + 0.14);
+      const peak = Math.max(0.0001, intensity * this.masterVolume);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(peak, t + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+      osc.connect(gain);
+      this.connectOut(gain, ctx, pan);
+      osc.start(t);
+      osc.stop(t + 0.17);
+      t += 0.11 + Math.random() * 0.09;
+    }
+  }
+
+  /** A single sharp metallic slam — a door, a locker, something heavy
+   *  falling out of sight. Transient thump plus a bright noise crack so it
+   *  reads as an impact, not a tone. */
+  bang(intensity = 0.5, pan = 0): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    this.noiseBurst(0.12, intensity, 3200, pan);
+    const gain = ctx.createGain();
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(140, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(38, ctx.currentTime + 0.18);
+    const peak = Math.max(0.0001, intensity * 0.8 * this.masterVolume);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+    osc.connect(gain);
+    this.connectOut(gain, ctx, pan);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.24);
+  }
+
+  /** Unseen footsteps — three or four dull thuds that grow louder and
+   *  closer together, as if approaching from off-screen. Directional via
+   *  `pan`; distinct from {@link thud}'s single distant impact. */
+  footsteps(pan = 0): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    const steps = 3 + Math.floor(Math.random() * 2);
+    let t = ctx.currentTime;
+    for (let i = 0; i < steps; i++) {
+      const progress = i / (steps - 1);
+      const gain = ctx.createGain();
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(70 - progress * 15, t);
+      osc.frequency.exponentialRampToValueAtTime(30, t + 0.18);
+      const peak = Math.max(
+        0.0001,
+        (0.12 + progress * 0.22) * this.masterVolume,
+      );
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(peak, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      osc.connect(gain);
+      this.connectOut(gain, ctx, pan);
+      osc.start(t);
+      osc.stop(t + 0.22);
+      t += 0.42 - progress * 0.16 + Math.random() * 0.05;
+    }
+  }
+
+  /** Close, ragged breathing right at the edge of hearing — as if something
+   *  is standing just behind the player. Two-phase inhale/exhale noise
+   *  swell, low volume and centred (pan defaults near 0) so it reads as
+   *  "right here" rather than off in the dark like {@link murmur}. */
+  breath(intensity = 0.22, pan = 0): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    this.noiseBurst(0.55, intensity, 500, pan);
+    const t = ctx.currentTime + 0.5;
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(380, t);
+    const length = Math.max(1, Math.floor(ctx.sampleRate * 0.45));
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const peak = Math.max(0.0001, intensity * 0.8 * this.masterVolume);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(peak, t + 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    src.connect(filter).connect(gain);
+    this.connectOut(gain, ctx, pan);
+    src.start(t);
+    src.stop(t + 0.5);
+  }
+
   /** The power gutters — a dry electrical crackle under the blackout flicker,
    *  distinct from {@link flicker}'s light-stutter crackle. */
   staticBurst(intensity = 0.35): void {

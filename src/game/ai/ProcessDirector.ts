@@ -6,8 +6,8 @@
  * engine-independent (no Phaser types) so the scheduling logic is unit
  * testable in isolation, same as `MonsterDirector`.
  *
- * Duplicated entries weight the roll — flicker/whisper/thud stay the common
- * beat, scream/static are rarer jolts.
+ * Duplicated entries weight the roll — flicker/whisper/thud/footsteps stay
+ * the common beat, scream/static/laugh/moan/bang are rarer jolts.
  */
 export const ANOMALY_TYPES = [
   "flicker",
@@ -16,8 +16,13 @@ export const ANOMALY_TYPES = [
   "whisper",
   "thud",
   "thud",
+  "footsteps",
+  "footsteps",
   "scream",
   "static",
+  "laugh",
+  "moan",
+  "bang",
 ] as const;
 export type AnomalyType = (typeof ANOMALY_TYPES)[number];
 

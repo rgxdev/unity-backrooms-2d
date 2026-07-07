@@ -1691,6 +1691,9 @@ export class MainScene extends Phaser.Scene {
 
   private triggerBlackout(): void {
     this.audio.staticBurst(0.32);
+    if (Math.random() < BLACKOUT_EVENT.breathChance) {
+      this.audio.breath(0.24, Math.random() * 0.6 - 0.3);
+    }
     const cam = this.cameras.main;
     const veil = this.add
       .rectangle(0, 0, cam.width, cam.height, 0x000000, 0)
@@ -1956,6 +1959,7 @@ export class MainScene extends Phaser.Scene {
         this.audio.murmur(0.22 + exitProximity * 0.2);
       } else {
         this.audio.shriek(0.3 + exitProximity * 0.3);
+        this.cameras.main.shake(120, 0.0025);
       }
       return;
     }
@@ -2192,6 +2196,47 @@ export class MainScene extends Phaser.Scene {
         this.audio.staticFuzz();
         this.triggerGlitch();
         break;
+      case "footsteps": {
+        const pan = Math.random() * 2 - 1;
+        this.audio.footsteps(pan);
+        break;
+      }
+      case "laugh": {
+        const pan = Math.random() * 2 - 1;
+        this.audio.laugh(0.3, pan);
+        this.tweens.add({
+          targets: this.presenceOverlay,
+          alpha: { from: 0, to: 0.18 },
+          duration: 90,
+          yoyo: true,
+          repeat: 2,
+        });
+        break;
+      }
+      case "moan": {
+        const pan = Math.random() * 2 - 1;
+        this.audio.moan(0.4, pan);
+        this.tweens.add({
+          targets: this.presenceOverlay,
+          alpha: { from: 0, to: 0.3 },
+          duration: 500,
+          yoyo: true,
+          ease: "Sine.InOut",
+        });
+        break;
+      }
+      case "bang": {
+        const pan = Math.random() * 2 - 1;
+        this.audio.bang(0.5, pan);
+        this.cameras.main.shake(180, 0.006);
+        this.tweens.add({
+          targets: this.anomalyOverlay,
+          alpha: { from: 0, to: 0.5 },
+          duration: 30,
+          yoyo: true,
+        });
+        break;
+      }
     }
   }
 }

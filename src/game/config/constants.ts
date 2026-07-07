@@ -110,8 +110,8 @@ export const DIFFICULTY_CONFIG: Record<Difficulty, DifficultyConfig> = {
  * attack. Purely a tension beat; scaled up near the exit (see EXIT_DREAD).
  */
 export const JUMPSCARE = {
-  minIntervalMs: 5500,
-  maxIntervalMs: 12500,
+  minIntervalMs: 4200,
+  maxIntervalMs: 9800,
   minVisibleMs: 1500,
   maxVisibleMs: 2900,
   /** World-unit distance at which an above-easy encounter attacks. */
@@ -123,7 +123,7 @@ export const JUMPSCARE = {
   /** Fraction of encounters that are a silent "peek" — a silhouette that
    *  never approaches or attacks, just proves it was watching. Unsettling
    *  precisely because nothing happens. */
-  peekChance: 0.45,
+  peekChance: 0.35,
   /** Peek encounters vanish faster — it's gone the moment you notice it. */
   peekVisibleMs: 900,
 } as const;
@@ -132,8 +132,8 @@ export const JUMPSCARE = {
  *  that are pure atmosphere, independent of the monster director. Tightened
  *  interval keeps something creepy happening almost constantly. */
 export const ANOMALY = {
-  minIntervalMs: 5000,
-  maxIntervalMs: 10000,
+  minIntervalMs: 3600,
+  maxIntervalMs: 7500,
 } as const;
 
 /** Monster activity ramps up as the player nears the exit. */
@@ -196,9 +196,12 @@ export const FEAR = {
 /** Random ambient power-flicker beat: the lights gutter and the fog swallows
  *  the room for a moment — pure atmosphere, no monster required. */
 export const BLACKOUT_EVENT = {
-  minIntervalMs: 10000,
-  maxIntervalMs: 18000,
+  minIntervalMs: 7500,
+  maxIntervalMs: 14000,
   durationMs: 320,
+  /** Chance a blackout is topped with a close breath cue — "something was
+   *  right there in the dark with you" — instead of just the static/veil. */
+  breathChance: 0.3,
 } as const;
 
 /** Permanent flat dim over the whole screen, independent of fog/vignette —
