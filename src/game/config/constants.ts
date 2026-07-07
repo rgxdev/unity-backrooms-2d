@@ -83,16 +83,22 @@ export const DIFFICULTY_CONFIG: Record<Difficulty, DifficultyConfig> = {
  * attack. Purely a tension beat; scaled up near the exit (see EXIT_DREAD).
  */
 export const JUMPSCARE = {
-  minIntervalMs: 7000,
-  maxIntervalMs: 15000,
-  minVisibleMs: 1700,
-  maxVisibleMs: 3200,
+  minIntervalMs: 5500,
+  maxIntervalMs: 12500,
+  minVisibleMs: 1500,
+  maxVisibleMs: 2900,
   /** World-unit distance at which an above-easy encounter attacks. */
-  attackRadius: 60,
+  attackRadius: 68,
   /** Tile-distance band from the player it can appear within — close enough
    *  to be seen, far enough to feel like it was already there. */
-  spawnMinRadiusTiles: 3,
-  spawnMaxRadiusTiles: 5.5,
+  spawnMinRadiusTiles: 2.5,
+  spawnMaxRadiusTiles: 5,
+  /** Fraction of encounters that are a silent "peek" — a silhouette that
+   *  never approaches or attacks, just proves it was watching. Unsettling
+   *  precisely because nothing happens. */
+  peekChance: 0.45,
+  /** Peek encounters vanish faster — it's gone the moment you notice it. */
+  peekVisibleMs: 900,
 } as const;
 
 /** Monster activity ramps up as the player nears the exit. */
@@ -103,6 +109,58 @@ export const EXIT_DREAD = {
   minIntervalScale: 0.4,
   /** Ambient patrol speed multiplier at the exit. */
   maxSpeedBoost: 0.6,
+} as const;
+
+/**
+ * The Stalker: a "don't look away" horror mechanic (see StalkerAI). It's a
+ * single persistent entity, independent of the level's patrol monsters, only
+ * active during the Ambient phase.
+ */
+export const STALKER = {
+  /** World distance at which a lurking stalker arms and starts creeping. */
+  triggerRadius: 340,
+  /** World distance at which an unseen stalker lunges. */
+  grabRadius: 30,
+  /** Creep speed (world units/sec) — slower than the player's walk, so
+   *  outrunning it is trivial; the threat is never looking away, not speed. */
+  creepSpeed: 46,
+  /** World-unit offset it snaps to from the player when it lunges — right in
+   *  their face, but not overlapping the sprite. */
+  lungeOffset: 16,
+  /** Seconds the lunge scare beat holds before it retreats. */
+  lungeDuration: 0.6,
+  /** Seconds off-stage after a lunge before it can lurk again. */
+  retreatCooldown: 9,
+  /** Tile-distance band from the player it respawns within after retreating. */
+  respawnMinRadiusTiles: 9,
+  respawnMaxRadiusTiles: 16,
+  /** How much further than the fog reveal radius the player can *just* spot
+   *  it at the edge of the dark — a hair short of comfortable. */
+  visRadiusBonusTiles: 1,
+} as const;
+
+/**
+ * Dynamic tension: a 0..1 "fear" value derived each frame from the nearest
+ * threat, driving the heartbeat cue and the screen vignette so dread reads
+ * physically, not just as an audio cue.
+ */
+export const FEAR = {
+  heartbeatMinIntervalMs: 340,
+  heartbeatMaxIntervalMs: 1150,
+  vignetteMinStrength: 0.16,
+  // Capped short of "screen goes black" — at max fear the play area must
+  // stay readable enough to navigate a chase to the exit.
+  vignetteMaxStrength: 0.7,
+  vignetteMaxRadius: 0.85,
+  vignetteMinRadius: 0.42,
+} as const;
+
+/** Random ambient power-flicker beat: the lights gutter and the fog swallows
+ *  the room for a moment — pure atmosphere, no monster required. */
+export const BLACKOUT_EVENT = {
+  minIntervalMs: 16000,
+  maxIntervalMs: 28000,
+  durationMs: 260,
 } as const;
 
 /** Never generate more monsters than this, whatever the difficulty/index. */
@@ -198,6 +256,7 @@ export const MONSTER_TINT = {
   pursuer: 0xff9d84, // hottest — the one that ends the level
   lurker: 0xffffff, // neutral — the default patrol threat
   jumpscare: 0xcbb8ff, // pale violet — the fleeting glimpse
+  stalker: 0xd8d0e8, // bone-pale, almost still-life — the "don't look away" thing
 } as const;
 
 export const SCENES = {

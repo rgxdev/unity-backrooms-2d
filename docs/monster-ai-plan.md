@@ -1,13 +1,15 @@
 # Monster AI Plan
 
 Pacing director: [`src/game/ai/MonsterDirector.ts`](../src/game/ai/MonsterDirector.ts)
+The Stalker ("don't look away"): [`src/game/ai/StalkerAI.ts`](../src/game/ai/StalkerAI.ts)
 Reactive FSM (library): [`src/game/ai/MonsterStateMachine.ts`](../src/game/ai/MonsterStateMachine.ts)
 Types: [`src/game/ai/types.ts`](../src/game/ai/types.ts)
 
 ## Scripted dread (current behaviour)
 
-The game is **not** a reactive-stealth hunt — it is a scripted scare. The player
-**cannot die**. Instead a [`MonsterDirector`](../src/game/ai/MonsterDirector.ts)
+The game is **not** a reactive-stealth hunt — it is a scripted scare. On Easy
+the player cannot die; on Middle/Hard the chase (and the Stalker's lunge, see
+below) are lethal. A [`MonsterDirector`](../src/game/ai/MonsterDirector.ts)
 drives three phases:
 
 ```mermaid
@@ -18,11 +20,11 @@ stateDiagram-v2
   Pursuit --> Escaped: player reaches exit
 ```
 
-| Phase   | Monster behaviour                                                   |
-| ------- | ------------------------------------------------------------------ |
-| Ambient | Patrols its path, **indifferent to the player** — only glimpsed in passing and *heard* when nearby (a growl + a dark screen pulse). Never approaches. |
-| Pursuit | Wakes with a roar + camera jolt and **bee-lines the player** at `DREAD.pursuitSpeed` (above the walk, below the sprint — sprint to escape). |
-| Escaped | Freezes; the "ENTKOMMEN" overlay confirms the near-miss.           |
+| Phase   | Monster behaviour                                                                                                                                     |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ambient | Patrols its path, **indifferent to the player** — only glimpsed in passing and _heard_ when nearby (a growl + a dark screen pulse). Never approaches. |
+| Pursuit | Wakes with a roar + camera jolt and **bee-lines the player** at `DREAD.pursuitSpeed` (above the walk, below the sprint — sprint to escape).           |
+| Escaped | Freezes; the "ENTKOMMEN" overlay confirms the near-miss.                                                                                              |
 
 The pursuit trigger and exit are level data (`pursuitTrigger`, `exit`), so the
 "end" is authored (here, generated) per level. Sprint (hold **Shift**) is how
@@ -46,6 +48,56 @@ menu.
 
 The reactive FSM below is retained as a tested library for a possible
 higher-difficulty mode, but is not wired into the current pacing.
+
+## Layered horror systems (rework)
+
+Scripted dread sets the overall pacing; four independent systems layer on top
+of it during the Ambient phase to make the level feel actively watched, not
+just occasionally dangerous:
+
+| System                          | File                                              | What it does                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The Stalker**                 | [`StalkerAI.ts`](../src/game/ai/StalkerAI.ts)     | SCP-173 / Weeping-Angel mechanic: freezes solid the instant the player has line of sight on it, closes distance the instant they look away. See below.                                                                                                                                                                                                               |
+| **Fear / heartbeat / vignette** | `MainScene.computeFear` / `updateFear`            | A 0..1 dread value from the single nearest threat each frame, driving `AudioManager.updateHeartbeat` (interval shrinks, thump gets louder) and a WebGL camera vignette (`FEAR` constants) that tightens and darkens. Explicitly relaxed (`relaxFear`) the instant a run ends so the outcome banner is never fighting a screen still darkened from the moment before. |
+| **Jump-scares**                 | `MainScene.updateJumpscare` / `trySpawnJumpscare` | As before (a monster flashes into view and vanishes), now with a `JUMPSCARE.peekChance` fraction that are silent "peeks" — a silhouette that never approaches or attacks. Unsettling precisely because nothing happens.                                                                                                                                              |
+| **Blackout flicker**            | `MainScene.updateBlackout` / `triggerBlackout`    | A random ambient power-flicker: screen briefly darkens with an electrical `AudioManager.staticBurst()`, no monster required. Pure atmosphere.                                                                                                                                                                                                                        |
+
+Cues that have a source direction (`growl`, `shriek`, `scream`) accept a `pan`
+(-1..1) so the stereo field hints at which side the threat is on. Attack/lunge
+beats also pulse the WebGL barrel-distortion filter (`pulseBarrel`) for a
+physical jolt alongside the camera flash and shake.
+
+### The Stalker
+
+```mermaid
+stateDiagram-v2
+  [*] --> Lurking
+  Lurking --> Creeping: player in trigger radius, unseen
+  Lurking --> Frozen: player in trigger radius, seen
+  Creeping --> Frozen: seen
+  Creeping --> Lunging: closes to grab radius, unseen
+  Frozen --> Creeping: no longer seen
+  Frozen --> Lunging: no longer seen, already in grab radius
+  Lunging --> Retreating: lunge duration elapses
+  Retreating --> Lurking: retreat cooldown elapses
+```
+
+A single persistent entity (`MainScene.spawnStalker`), independent of the
+level's patrol monsters. While `Frozen` it holds dead still — no idle
+hunch-and-lurch tween (`Monster.freezeStill`) — so the "did it just move?"
+read is unambiguous. While `Creeping` it glides at `STALKER.creepSpeed`
+without a leg-stride walk cycle (`Monster` constructor's `noWalkCycle`
+option) — it shouldn't look like it's ambling, it should look like it's
+simply _closer_ than it was. A lunge snaps it into the player's face
+(`STALKER.lungeOffset`), screams, and either kills (lethal difficulties) or
+just leaves the player rattled; it then fades out, teleports somewhere fresh
+off-stage, and fades back in (`relocateStalker`) — it should never look like
+it walked away. Hidden and frozen outside the Ambient phase so it doesn't
+compete with the Pursuit finale.
+
+"Seen" requires both line of sight (`VisibilitySystem.hasLineOfSight`,
+reused from the fog-of-war system) **and** being within the fog reveal
+radius — it can't be spotted through fog it hasn't already lit up.
 
 ## Reactive FSM (library, unused in-game)
 
