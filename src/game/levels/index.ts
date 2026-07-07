@@ -6,3 +6,4 @@ export {
   type LevelTheme,
 } from "./officialLevels";
 export { generateLevel, type GenerateInput } from "./generate";
+export { generateLevel0 } from "./level0";

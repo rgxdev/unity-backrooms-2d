@@ -3,7 +3,18 @@ import { z } from "zod";
 export const TileKind = {
   Floor: 0,
   Wall: 1,
+  /** Bottomless pit (Level 0 "Hole Variation"). Walkable, but stepping on it
+   *  is a fall — lethal, regardless of monster lethality. Not a sight blocker. */
+  Hole: 2,
 } as const;
+
+/**
+ * Thematic tag for a zone. Drives tinting / lighting so the documented Level 0
+ * sub-sections read distinctly: sticky Red Rooms, unlit Blackout Zones, the
+ * rare warm Manila Room.
+ */
+export const ZoneKind = z.enum(["red", "blackout", "manila"]);
+export type ZoneKindT = z.infer<typeof ZoneKind>;
 
 export const ZoneSchema = z.object({
   id: z.string().min(1).max(64),
@@ -12,6 +23,7 @@ export const ZoneSchema = z.object({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   hidden: z.boolean().default(false),
+  kind: ZoneKind.optional(),
 });
 
 export const PointSchema = z.object({
@@ -41,7 +53,7 @@ export const LevelSchema = z
     tileSize: z.number().int().positive().max(256),
     width: z.number().int().positive().max(512),
     height: z.number().int().positive().max(512),
-    tiles: z.array(z.number().int().min(0).max(1)),
+    tiles: z.array(z.number().int().min(0).max(2)),
     spawn: z.object({
       x: z.number().int().nonnegative(),
       y: z.number().int().nonnegative(),
@@ -97,14 +109,16 @@ export const LevelSchema = z
           message: "exit is outside level bounds",
           path: ["exit"],
         });
-      } else if (
-        level.tiles[level.exit.y * level.width + level.exit.x] === TileKind.Wall
-      ) {
-        ctx.addIssue({
-          code: "custom",
-          message: "exit is on a wall tile",
-          path: ["exit"],
-        });
+      } else {
+        const exitTile =
+          level.tiles[level.exit.y * level.width + level.exit.x];
+        if (exitTile === TileKind.Wall || exitTile === TileKind.Hole) {
+          ctx.addIssue({
+            code: "custom",
+            message: "exit is on a non-floor tile",
+            path: ["exit"],
+          });
+        }
       }
     }
     if (level.pursuitTrigger) {

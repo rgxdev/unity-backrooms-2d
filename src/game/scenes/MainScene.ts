@@ -1,16 +1,19 @@
 import Phaser from "phaser";
 import {
+  BLACKOUT_MIN_ALPHA,
   DIFFICULTY_CONFIG,
   DREAD,
   SCENES,
   TEXTURES,
   TILE_SIZE,
   VISIBILITY,
+  ZONE_TINT,
 } from "@/game/config/constants";
 import type { Difficulty } from "@/lib/schemas/settings";
 import { TileKind, type LevelData, type Zone } from "@/lib/schemas/level";
 import {
   generateLevel,
+  generateLevel0,
   getOfficialLevel,
   LAST_LEVEL_INDEX,
   type LevelTheme,
@@ -62,6 +65,10 @@ export class MainScene extends Phaser.Scene {
   private fogState: Int8Array = new Int8Array(0);
   private hiddenZoneByTile: Int16Array = new Int16Array(0);
   private discoveredZones = new Set<number>();
+  /** Per-tile floor tint from thematic zones (red / manila); -1 = base tint. */
+  private floorTintByTile: Int32Array = new Int32Array(0);
+  /** 1 where a Blackout Zone keeps residual fog even when "visible". */
+  private blackoutByTile: Uint8Array = new Uint8Array(0);
 
   private lastTileX = -1;
   private lastTileY = -1;
@@ -87,13 +94,19 @@ export class MainScene extends Phaser.Scene {
     this.theme = official.theme;
     // Fresh random layout each play (deterministic per seed for testing).
     const seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
-    this.level = generateLevel({
+    const genInput = {
       levelId: official.id,
       levelName: official.name,
       difficulty: this.difficulty,
       levelIndex: this.levelIndex,
       seed,
-    });
+    };
+    // Level 0 is hand-authored into the documented Backrooms sub-sections;
+    // every deeper level uses the generic room generator.
+    this.level =
+      this.levelIndex === 0
+        ? generateLevel0(genInput)
+        : generateLevel(genInput);
     const level = this.level;
 
     const worldW = level.width * TILE_SIZE;
@@ -104,6 +117,7 @@ export class MainScene extends Phaser.Scene {
     this.cameras.main.setZoom(2);
     this.cameras.main.roundPixels = true;
 
+    this.buildZoneThemeMasks();
     this.buildTiles();
     this.buildHiddenZoneMask();
     this.buildFog();
@@ -156,6 +170,29 @@ export class MainScene extends Phaser.Scene {
     return this.level.tiles[y * this.level.width + x] === TileKind.Wall;
   }
 
+  /**
+   * Build the tint / blackout lookup tables from the level's thematic zones so
+   * the documented Level 0 sub-sections read distinctly. Runs before
+   * buildTiles so floor tiles can be tinted as they are created.
+   */
+  private buildZoneThemeMasks(): void {
+    const { width, height, zones } = this.level;
+    this.floorTintByTile = new Int32Array(width * height).fill(-1);
+    this.blackoutByTile = new Uint8Array(width * height);
+    for (const zone of zones) {
+      if (!zone.kind) continue;
+      const tint = ZONE_TINT[zone.kind];
+      for (let y = zone.y; y < zone.y + zone.height; y++) {
+        for (let x = zone.x; x < zone.x + zone.width; x++) {
+          if (x >= width || y >= height) continue;
+          const i = y * width + x;
+          if (zone.kind === "blackout") this.blackoutByTile[i] = 1;
+          else if (tint !== undefined) this.floorTintByTile[i] = tint;
+        }
+      }
+    }
+  }
+
   private buildTiles(): void {
     this.walls = this.physics.add.staticGroup();
     const { width, height, tiles } = this.level;
@@ -163,15 +200,19 @@ export class MainScene extends Phaser.Scene {
       for (let x = 0; x < width; x++) {
         const px = x * TILE_SIZE + TILE_SIZE / 2;
         const py = y * TILE_SIZE + TILE_SIZE / 2;
-        const tint = this.theme.tint;
-        if (tiles[y * width + x] === TileKind.Wall) {
+        const kind = tiles[y * width + x];
+        if (kind === TileKind.Wall) {
           (this.walls.create(px, py, TEXTURES.wall) as Phaser.GameObjects.Image)
-            .setTint(tint);
+            .setTint(this.theme.tint);
+        } else if (kind === TileKind.Hole) {
+          // Bottomless pit — no collider, but lethal to step on (see update()).
+          this.add.image(px, py, TEXTURES.hole).setDepth(-9);
         } else {
           const alt = (x + y) % 2 === 0;
+          const zoneTint = this.floorTintByTile[y * width + x] ?? -1;
           this.add
             .image(px, py, alt ? TEXTURES.floor : TEXTURES.floorAlt)
-            .setTint(tint)
+            .setTint(zoneTint >= 0 ? zoneTint : this.theme.tint)
             .setDepth(-10);
         }
       }
@@ -255,13 +296,14 @@ export class MainScene extends Phaser.Scene {
     if (!exit) return;
     const c = this.centreOf(exit.x, exit.y);
     const door = this.add.image(c.x, c.y, TEXTURES.exit).setDepth(-5);
-    // Gentle pulse so the way out reads as the goal.
+    // Restless flicker — the seam of light guttering like a dying tube.
     this.tweens.add({
       targets: door,
-      alpha: { from: 0.7, to: 1 },
-      duration: 900,
+      alpha: { from: 0.5, to: 1 },
+      duration: 150,
       yoyo: true,
       repeat: -1,
+      repeatDelay: 90,
       ease: "Sine.InOut",
     });
   }
@@ -378,6 +420,29 @@ export class MainScene extends Phaser.Scene {
     this.scheduleRestart(2800);
   }
 
+  private isHoleTile(x: number, y: number): boolean {
+    if (x < 0 || y < 0 || x >= this.level.width || y >= this.level.height) {
+      return false;
+    }
+    return this.level.tiles[y * this.level.width + x] === TileKind.Hole;
+  }
+
+  /** Fell into a bottomless pit — always fatal, on every difficulty. */
+  private onFall(): void {
+    if (this.ended) return;
+    this.ended = true;
+    this.player.setVelocity(0, 0);
+    this.cameras.main.shake(400, 0.01);
+    this.cameras.main.fade(600, 0, 0, 0);
+    this.showBanner(
+      "GEFALLEN",
+      "Du bist in ein bodenloses Loch gestürzt. Leertaste: erneut versuchen.",
+      "#8ab4ff",
+      0x02030a,
+    );
+    this.scheduleRestart(2800);
+  }
+
   private onDeath(): void {
     if (this.ended) return;
     this.ended = true;
@@ -472,7 +537,12 @@ export class MainScene extends Phaser.Scene {
       }
       if (this.fogState[i] === vis) continue;
       this.fogState[i] = vis;
-      this.fogTiles[i]?.setAlpha(FOG_ALPHA[vis] ?? 1);
+      let alpha = FOG_ALPHA[vis] ?? 1;
+      // Blackout Zones never fully light — keep a residual gloom.
+      if (this.blackoutByTile[i] && alpha < BLACKOUT_MIN_ALPHA) {
+        alpha = BLACKOUT_MIN_ALPHA;
+      }
+      this.fogTiles[i]?.setAlpha(alpha);
     }
   }
 
@@ -488,6 +558,9 @@ export class MainScene extends Phaser.Scene {
       this.visibility.update(tileX, tileY, (x, y) => this.isWallTile(x, y));
       this.refreshFog();
     }
+
+    // One wrong step in the Hole Variation and you fall — no monster needed.
+    if (!this.ended && this.isHoleTile(tileX, tileY)) this.onFall();
 
     this.updateAi(time);
 

@@ -38,6 +38,7 @@ export class PreloadScene extends Phaser.Scene {
     this.makePlayer(TEXTURES.player);
     this.makeMonster(TEXTURES.monster);
     this.makeExit(TEXTURES.exit);
+    this.makeHole(TEXTURES.hole);
   }
 
   /** Fill a single "pixel" cell. Keeps sprite work readable. */
@@ -185,19 +186,46 @@ export class PreloadScene extends Phaser.Scene {
     g.destroy();
   }
 
-  /** Glowing exit doorway — the escape. Fills a full tile. */
+  /**
+   * The way out of Level 0: a flickering wall to throw yourself through. Drawn
+   * as a wallpapered wall block split by a bright vertical seam of light — the
+   * scene pulses its alpha so it visibly flickers.
+   */
   private makeExit(key: string): void {
     const t = TILE_SIZE;
     const g = this.make.graphics({ x: 0, y: 0 }, false);
 
-    // Dark frame.
-    this.px(g, COLORS.exitFrame, 4, 2, t - 8, t - 2);
-    // Glowing portal, brightest at the centre.
-    this.px(g, COLORS.exitGlow, 7, 5, t - 14, t - 7);
-    this.px(g, COLORS.exitCore, 10, 8, t - 20, t - 12);
-    // Frame keyline.
-    g.lineStyle(2, 0x000000, 0.4);
-    g.strokeRect(4, 2, t - 8, t - 2);
+    // Wall face (matches the surrounding wallpaper so it hides in plain sight).
+    this.px(g, COLORS.wall, 0, 0, t, t);
+    for (let x = 2; x < t; x += 6) {
+      this.px(g, COLORS.wallStripe, x, 0, 2, t, 0.55);
+    }
+    this.px(g, COLORS.wallHi, 0, 0, t, 2);
+    this.px(g, COLORS.wallShade, 0, t - 3, t, 3);
+
+    // Bright vertical crack of light down the middle — the seam to Level 1.
+    const cx = t / 2 - 2;
+    this.px(g, COLORS.exitGlow, cx, 2, 4, t - 4, 0.9);
+    this.px(g, COLORS.exitCore, cx + 1, 3, 2, t - 6);
+    // Soft glow bleeding off the seam.
+    this.px(g, COLORS.exitGlow, cx - 2, 4, 2, t - 8, 0.35);
+    this.px(g, COLORS.exitGlow, cx + 4, 4, 2, t - 8, 0.35);
+
+    g.generateTexture(key, t, t);
+    g.destroy();
+  }
+
+  /** Bottomless pit tile — a dark hole with a faint carpet rim. */
+  private makeHole(key: string): void {
+    const t = TILE_SIZE;
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+
+    // Carpet-coloured rim so the pit sits inside the yellow floor.
+    this.px(g, COLORS.holeRim, 0, 0, t, t);
+    // Recessed dark ring.
+    this.px(g, COLORS.holeEdge, 3, 3, t - 6, t - 6);
+    // The void.
+    this.px(g, COLORS.holePit, 6, 6, t - 12, t - 12);
 
     g.generateTexture(key, t, t);
     g.destroy();

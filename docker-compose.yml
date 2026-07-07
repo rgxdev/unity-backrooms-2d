@@ -1,0 +1,9 @@
+services:
+  backrooms-2d:
+    image: ghcr.io/rgxdev/backrooms-2d:latest
+    ports:
+      - "9103:9103"
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 9103

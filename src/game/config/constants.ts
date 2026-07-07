@@ -102,12 +102,28 @@ export const COLORS = {
   monsterLimb: 0x2b2338,
   monsterEye: 0xff5230,
   monsterMaw: 0xe8e2c4,
-  // Exit door (the way out)
+  // Bottomless hole (Level 0 "Hole Variation")
+  holeRim: 0x2a2411,
+  holeEdge: 0x0d0b06,
+  holePit: 0x030302,
+  // Flickering exit wall (the "throw yourself through" seam to Level 1)
   exitFrame: 0x2a2416,
   exitGlow: 0x6bf09a,
   exitCore: 0x9dffc0,
   fog: 0x05050a,
 } as const;
+
+/**
+ * Multiplicative floor tints for the documented Level 0 sub-sections. Applied
+ * on top of the base yellow carpet so each zone reads at a glance.
+ */
+export const ZONE_TINT: Record<string, number> = {
+  red: 0xff5a4a, // sticky crimson Red Rooms
+  manila: 0xf4e6b4, // warm, calm Manila Room
+} as const;
+
+/** Blackout Zones never fully light — visible tiles keep this residual fog. */
+export const BLACKOUT_MIN_ALPHA = 0.62;
 
 export const TEXTURES = {
   floor: "tex-floor",
@@ -116,6 +132,7 @@ export const TEXTURES = {
   player: "tex-player",
   monster: "tex-monster",
   exit: "tex-exit",
+  hole: "tex-hole",
 } as const;
 
 export const SCENES = {

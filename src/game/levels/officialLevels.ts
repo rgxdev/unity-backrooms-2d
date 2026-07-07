@@ -23,7 +23,9 @@ export const OFFICIAL_LEVELS: readonly OfficialLevel[] = [
     index: 0,
     id: "level-0",
     name: "Level 0 — The Lobby",
-    blurb: "Endless mono-yellow rooms and the hum of fluorescent lights.",
+    blurb:
+      "Mono-yellow rooms: pillar halls, pitch-black pits, sticky red rooms — " +
+      "find the flickering wall and throw yourself into Level 1.",
     theme: { tint: 0xffffff, fog: 0x05050a },
   },
   {

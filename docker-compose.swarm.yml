@@ -1,0 +1,26 @@
+services:
+  backrooms-2d:
+    image: ghcr.io/rgxdev/backrooms-2d:latest
+    environment:
+      NODE_ENV: production
+      PORT: 9103
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.backrooms-2d.rule=Host(`backrooms.quavon.de`)"
+        - "traefik.http.routers.backrooms-2d.entrypoints=websecure"
+        - "traefik.http.routers.backrooms-2d.tls.certresolver=le-prod"
+        - "traefik.http.services.backrooms-2d.loadbalancer.server.port=9103"
+
+networks:
+  traefik:
+    external: true
