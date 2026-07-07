@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { MonsterKind } from "@/game/ai/types";
 
 export const TileKind = {
   Floor: 0,
@@ -31,12 +32,26 @@ export const PointSchema = z.object({
   y: z.number().int().nonnegative(),
 });
 
+/** Keep in sync with {@link MonsterKind} in `game/ai/types.ts`. */
+export const MonsterKindSchema = z.enum([
+  "pursuer",
+  "lurker",
+  "hound",
+  "smiler",
+  "faceling",
+  "skinstealer",
+  "deathmoth",
+]) satisfies z.ZodType<MonsterKind>;
+
 export const MonsterSpawnSchema = z.object({
   id: z.string().min(1).max(64),
   x: z.number().int().nonnegative(),
   y: z.number().int().nonnegative(),
   /** Looping patrol waypoints in tile coordinates. Empty = stationary. */
   patrol: z.array(PointSchema).default([]),
+  /** Monster identity/role. Defaults to "lurker" so old/missing saved level
+   *  data (pre-roster) validates unchanged. */
+  kind: MonsterKindSchema.default("lurker"),
 });
 
 export const RectSchema = z.object({

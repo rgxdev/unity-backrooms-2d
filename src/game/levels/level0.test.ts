@@ -48,6 +48,25 @@ describe("generateLevel0", () => {
     expect(a.exit).toEqual(b.exit);
   });
 
+  it("produces the same monster kinds when regenerated with the same seed", () => {
+    const a = generateLevel0(input({ seed: 321, difficulty: "hard" }));
+    const b = generateLevel0(input({ seed: 321, difficulty: "hard" }));
+    expect(a.monsters.map((m) => m.kind)).toEqual(b.monsters.map((m) => m.kind));
+  });
+
+  it("never rolls a hound kind (hounds are level-1+ only, Level 0's roster has none)", () => {
+    for (const seed of [1, 2, 3, 42, 777, 2024, 99999]) {
+      const level = generateLevel0(input({ seed, difficulty: "hard" }));
+      expect(level.monsters.some((m) => m.kind === "hound")).toBe(false);
+    }
+  });
+
+  it("keeps the pursuer's kind pinned regardless of the roster", () => {
+    const level = generateLevel0(input({ seed: 55 }));
+    const pursuer = level.monsters.find((m) => m.id === "pursuer");
+    expect(pursuer?.kind).toBe("pursuer");
+  });
+
   it("keeps a pit-free route from spawn to the exit", () => {
     for (const seed of [1, 42, 777, 2024, 99999]) {
       for (const difficulty of ["easy", "middle", "hard"] as const) {

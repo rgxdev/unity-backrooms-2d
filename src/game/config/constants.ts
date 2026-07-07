@@ -1,4 +1,14 @@
 import type { Difficulty } from "@/lib/schemas/settings";
+import {
+  DEFAULT_MONSTER_TUNING,
+  HOUND_TUNING,
+  SMILER_TUNING,
+  FACELING_TUNING,
+  SKINSTEALER_TUNING,
+  DEATHMOTH_TUNING,
+  type MonsterKind,
+  type MonsterTuning,
+} from "@/game/ai/types";
 
 export const TILE_SIZE = 32;
 
@@ -639,6 +649,10 @@ export const MONSTER_TINT = {
   jumpscare: 0xcbb8ff, // pale violet — the fleeting glimpse
   stalker: 0xd8d0e8, // bone-pale, almost still-life — the "don't look away" thing
   hound: 0xc46a3c, // rusty feral red-brown — the noise-drawn pack hunter
+  smiler: 0xfff29a, // sickly bright grin-yellow — the light-chaser
+  faceling: 0xb8c2d6, // pale dull blue-grey — a blank mimic of a person
+  skinstealer: 0xd9a892, // pale fleshy tone — faintly, unmistakably wrong
+  deathmoth: 0x9a9070, // dusty ash-brown — a swarm, not a silhouette
 } as const;
 
 /**
@@ -662,6 +676,59 @@ export const HOUND = {
    *  quadruped without needing new sprite art. */
   scaleX: 1.12,
   scaleY: 0.78,
+} as const;
+
+/**
+ * Per-kind spawn config: the single source of truth for how each
+ * {@link MonsterKind} moves, looks, and whether it can actually kill.
+ * Generalizes the Hound's original one-off tuning/tint/scale pattern to
+ * every roster kind (see `game/levels/roster.ts` for which kinds appear on
+ * which level, sourced from tasks/research-canon.md's wiki canon check).
+ */
+export interface MonsterKindConfig {
+  tuning: MonsterTuning;
+  /** Phaser `setTint` colour, before this level's mood-blend (see
+   *  MainScene.roleTint). */
+  tint: number;
+  /** Non-uniform base scale, e.g. the Hound's leaner stance or the
+   *  Deathmoth's small swarm-silhouette. Omit for a plain 1:1 humanoid scale. */
+  scale?: { x: number; y: number };
+  /** Glides instead of walk-cycling (the Stalker's "don't look away" tell).
+   *  No roster kind uses this yet — reserved for parity with Monster's opt. */
+  noWalkCycle?: boolean;
+  /** Never attacks or kills, regardless of difficulty or MonsterDirector
+   *  phase — the Faceling ("relatively easy to evade" even angered) and the
+   *  Deathmoth (a startle, not a threat) per wiki canon. */
+  harmless?: boolean;
+  /** Punished by sustained direct gaze rather than by looking away — the
+   *  Skin-Stealer's "avoid eye contact, do not engage" survival advice
+   *  (wiki `level-1`). Opposite trigger direction from the Stalker, which
+   *  punishes looking *away*. Consumed by the Task 5 gaze mechanic. */
+  avoidGaze?: boolean;
+}
+
+export const MONSTER_KIND_CONFIG: Record<MonsterKind, MonsterKindConfig> = {
+  pursuer: { tuning: DEFAULT_MONSTER_TUNING, tint: MONSTER_TINT.pursuer },
+  lurker: { tuning: DEFAULT_MONSTER_TUNING, tint: MONSTER_TINT.lurker },
+  hound: {
+    tuning: HOUND_TUNING,
+    tint: MONSTER_TINT.hound,
+    scale: { x: HOUND.scaleX, y: HOUND.scaleY },
+  },
+  smiler: { tuning: SMILER_TUNING, tint: MONSTER_TINT.smiler },
+  faceling: { tuning: FACELING_TUNING, tint: MONSTER_TINT.faceling, harmless: true },
+  skinstealer: {
+    tuning: SKINSTEALER_TUNING,
+    tint: MONSTER_TINT.skinstealer,
+    scale: { x: 1, y: 1.05 },
+    avoidGaze: true,
+  },
+  deathmoth: {
+    tuning: DEATHMOTH_TUNING,
+    tint: MONSTER_TINT.deathmoth,
+    scale: { x: 0.55, y: 0.55 },
+    harmless: true,
+  },
 } as const;
 
 /**

@@ -3,6 +3,8 @@ import type { Difficulty } from "@/lib/schemas/settings";
 import { DIFFICULTY_CONFIG, MAX_MONSTERS } from "@/game/config/constants";
 import { chance, makeRng, pick, randInt, shuffle, type Rng } from "./rng";
 import { pickWallExit } from "./wallExit";
+import type { MonsterKind } from "@/game/ai/types";
+import { pickMonsterKind } from "./roster";
 
 interface Room {
   x: number;
@@ -185,7 +187,7 @@ function addSecretRoom(
   return null;
 }
 
-function makeMonster(id: string, room: Room, rng: Rng) {
+function makeMonster(id: string, room: Room, rng: Rng, levelIndex: number) {
   const inset = 1;
   const corners = [
     { x: room.x + inset, y: room.y + inset },
@@ -206,7 +208,12 @@ function makeMonster(id: string, room: Room, rng: Rng) {
       patrol = corners.filter((_, i) => i !== skip);
     }
   }
-  return { id, x: c.x, y: c.y, patrol };
+  // The pursuer role is level-agnostic and never rolled from the roster;
+  // every other spawn draws its kind from the level's roster (deterministic
+  // per seed since it consumes the shared `rng`).
+  const kind: MonsterKind =
+    id === "pursuer" ? "pursuer" : pickMonsterKind(rng, levelIndex);
+  return { id, x: c.x, y: c.y, patrol, kind };
 }
 
 /**
@@ -332,7 +339,7 @@ export function generateLevel(input: GenerateInput): LevelData {
   // repeat a room once every other one already has a threat — otherwise
   // several can land in the same room and clump into a crowd that's visible
   // together nonstop instead of one threat at a time.
-  const monsters = [makeMonster("pursuer", exitRoom, rng)];
+  const monsters = [makeMonster("pursuer", exitRoom, rng, input.levelIndex)];
   const otherRooms = shuffle(
     rng,
     rooms.filter((r) => r !== spawnRoom && r !== exitRoom && r !== secret?.room),
@@ -342,7 +349,7 @@ export function generateLevel(input: GenerateInput): LevelData {
       otherRooms.length > 0
         ? otherRooms[(i - 1) % otherRooms.length]!
         : exitRoom;
-    monsters.push(makeMonster(`lurker-${i}`, room, rng));
+    monsters.push(makeMonster(`lurker-${i}`, room, rng, input.levelIndex));
   }
   // Keep every monster spawn and patrol tile walkable (a pillar may have
   // landed on a room centre).

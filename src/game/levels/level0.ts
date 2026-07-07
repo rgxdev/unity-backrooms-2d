@@ -3,6 +3,8 @@ import { DIFFICULTY_CONFIG, MAX_MONSTERS } from "@/game/config/constants";
 import { chance, makeRng, pick, randInt, shuffle, type Rng } from "./rng";
 import type { GenerateInput } from "./generate";
 import { pickWallExit } from "./wallExit";
+import type { MonsterKind } from "@/game/ai/types";
+import { pickMonsterKind } from "./roster";
 
 /**
  * Level 0 — "The Lobby" — themed after the Backrooms wiki entry
@@ -197,9 +199,14 @@ function addRedLoop(tiles: number[], width: number, r: Room, rng: Rng): void {
   }
 }
 
-function makeMonster(id: string, room: Room) {
+function makeMonster(id: string, room: Room, rng: Rng) {
   const inset = 1;
   const c = centre(room);
+  // The pursuer role is level-agnostic and never rolled from the roster;
+  // every other spawn draws its kind from Level 0's roster (deterministic
+  // per seed since it consumes the shared `rng`). Level 0 is always
+  // levelIndex 0 here.
+  const kind: MonsterKind = id === "pursuer" ? "pursuer" : pickMonsterKind(rng, 0);
   return {
     id,
     x: c.x,
@@ -210,6 +217,7 @@ function makeMonster(id: string, room: Room) {
       { x: room.x + room.w - 1 - inset, y: room.y + room.h - 1 - inset },
       { x: room.x + inset, y: room.y + room.h - 1 - inset },
     ],
+    kind,
   };
 }
 
@@ -353,12 +361,12 @@ export function generateLevel0(input: GenerateInput): LevelData {
   // into a crowd that's visible together nonstop instead of one threat at a
   // time.
   const monsterCount = clamp(cfg.base.monsters + 1, 1, MAX_MONSTERS);
-  const monsters = [makeMonster("pursuer", exitRoom)];
-  if (monsterCount > 1) monsters.push(makeMonster("red-lurker", redRoom));
+  const monsters = [makeMonster("pursuer", exitRoom, rng)];
+  if (monsterCount > 1) monsters.push(makeMonster("red-lurker", redRoom, rng));
   const fillerRooms = [fillerRoom, blackoutRoom, holeRoom];
   for (let i = monsters.length; i < monsterCount; i++) {
     const room = fillerRooms[(i - 2) % fillerRooms.length]!;
-    monsters.push(makeMonster(`lurker-${i}`, room));
+    monsters.push(makeMonster(`lurker-${i}`, room, rng));
   }
 
   // Never bury the spawn, exit, monster spawns or their patrol corners under a

@@ -42,6 +42,22 @@ export function chance(rng: Rng, probability: number): boolean {
   return rng() < probability;
 }
 
+/** Weighted random pick — probability proportional to each item's `weight`.
+ *  Weights don't need to sum to 1 (normalized internally). Falls back to the
+ *  last item if floating-point rounding leaves a sliver unconsumed. */
+export function weightedPick<T extends { weight: number }>(
+  rng: Rng,
+  items: readonly T[],
+): T {
+  const total = items.reduce((sum, item) => sum + item.weight, 0);
+  let roll = rng() * total;
+  for (const item of items) {
+    roll -= item.weight;
+    if (roll <= 0) return item;
+  }
+  return items[items.length - 1]!;
+}
+
 /** Fisher-Yates shuffle — returns a new array, leaves the input untouched. */
 export function shuffle<T>(rng: Rng, items: readonly T[]): T[] {
   const result = items.slice();

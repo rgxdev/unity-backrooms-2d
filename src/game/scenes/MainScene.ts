@@ -15,6 +15,7 @@ import {
   HOUND,
   JUMPSCARE,
   LORE_PICKUP,
+  MONSTER_KIND_CONFIG,
   MONSTER_STEALTH,
   MONSTER_TINT,
   OLDSCHOOL_FX,
@@ -56,7 +57,8 @@ import {
   type AnomalyType,
   ProcessDirector,
 } from "@/game/ai/ProcessDirector";
-import { DEFAULT_MONSTER_TUNING, HOUND_TUNING } from "@/game/ai/types";
+import { DEFAULT_MONSTER_TUNING } from "@/game/ai/types";
+import type { MonsterKind } from "@/game/ai/types";
 import { StalkerAI, StalkerState } from "@/game/ai/StalkerAI";
 import type { Vec2 } from "@/game/ai/steering";
 import { findPath } from "@/game/ai/pathfinding";
@@ -95,6 +97,13 @@ export class MainScene extends Phaser.Scene {
   private phase: GamePhase = GamePhase.Ambient;
   private presenceOverlay!: Phaser.GameObjects.Rectangle;
   private anomalyOverlay!: Phaser.GameObjects.Rectangle;
+  /** Holds every fixed-position HUD element (FPS counter, hotbar, stamina
+   *  bar). Camera zoom scales scrollFactor(0) objects around the viewport
+   *  centre same as any other object — only scroll is cancelled, not zoom
+   *  (see {@link updateHudTransform}) — so this container's own transform is
+   *  kept at the inverse of the current zoom, letting every child use plain,
+   *  unscaled screen-pixel coordinates regardless of zoom. */
+  private hudContainer!: Phaser.GameObjects.Container;
   private lastCueAt = -Infinity;
 
   /** Background ambience process — flickers/whispers/thuds, cosmetic only. */
@@ -121,9 +130,11 @@ export class MainScene extends Phaser.Scene {
   /** Per-monster: next time it's allowed to recompute its maze route to the
    *  player (see ai/pathfinding.ts). */
   private readonly pursuitPathRecalcAt = new WeakMap<Monster, number>();
-  /** Monsters rolled as Hounds (see constants.ts's HOUND) — faster, leaner,
-   *  noise-drawn, distinct presence cue. */
-  private readonly houndMonsters = new WeakSet<Monster>();
+  /** Which `MonsterKind` a live `Monster` instance was spawned as (see
+   *  constants.ts's `MONSTER_KIND_CONFIG`) — drives per-kind chase-speed,
+   *  audio cue, and (later) behavior lookups generically instead of a
+   *  Hound-only special case. */
+  private readonly monsterKinds = new WeakMap<Monster, MonsterKind>();
   /** True once the level has resolved (escaped or died); freezes gameplay. */
   private ended = false;
   private restarted = false;
@@ -302,20 +313,19 @@ export class MainScene extends Phaser.Scene {
     this.buildExit();
     this.buildPresenceOverlay();
     this.buildOldschoolOverlay();
+    this.buildHudContainer();
     this.buildFlashlightSystems();
     this.setupFilters();
     this.audio = new AudioManager(this.sound);
     this.audio.startHum();
 
     if (getSettings().showFps) {
-      this.fpsText = this.add
-        .text(6, 6, "", {
-          fontFamily: "monospace",
-          fontSize: "12px",
-          color: "#e4c94a",
-        })
-        .setScrollFactor(0)
-        .setDepth(1000);
+      this.fpsText = this.add.text(6, 6, "", {
+        fontFamily: "monospace",
+        fontSize: "12px",
+        color: "#e4c94a",
+      });
+      this.hudContainer.add(this.fpsText);
     }
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -647,13 +657,9 @@ export class MainScene extends Phaser.Scene {
       .rectangle(x, y, 34, 34, 0x0a0a12, 0.78)
       .setOrigin(0, 0)
       .setStrokeStyle(1, 0x4a4530, 0.9)
-      .setScrollFactor(0)
-      .setDepth(950)
       .setVisible(false);
     this.hotbarIcon = this.add
       .image(x + 17, y + 15, TEXTURES.flashlight)
-      .setScrollFactor(0)
-      .setDepth(951)
       .setScale(0.85)
       .setAlpha(0.5)
       .setVisible(false);
@@ -663,9 +669,8 @@ export class MainScene extends Phaser.Scene {
         fontSize: "10px",
         color: "#c9b458",
       })
-      .setScrollFactor(0)
-      .setDepth(951)
       .setVisible(false);
+    this.hudContainer.add([this.hotbarBg, this.hotbarIcon, this.hotbarLabel]);
   }
 
   /** Top-left sprint stamina meter — always visible, since sprint is gated
@@ -675,17 +680,14 @@ export class MainScene extends Phaser.Scene {
     const y = 26;
     const w = 90;
     const h = 8;
-    this.add
+    const bg = this.add
       .rectangle(x, y, w, h, 0x0a0a12, 0.78)
       .setOrigin(0, 0)
-      .setStrokeStyle(1, 0x4a4530, 0.9)
-      .setScrollFactor(0)
-      .setDepth(950);
+      .setStrokeStyle(1, 0x4a4530, 0.9);
     this.staminaBarFill = this.add
       .rectangle(x + 1, y + 1, w - 2, h - 2, 0xe4c94a, 0.9)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(951);
+      .setOrigin(0, 0);
+    this.hudContainer.add([bg, this.staminaBarFill]);
   }
 
   /** Syncs the stamina bar's width/colour to the controller each frame —
@@ -1086,41 +1088,34 @@ export class MainScene extends Phaser.Scene {
     );
   }
 
-  /** Pursuer reads hottest (it's the one that ends the level); everything
-   *  else patrols as the neutral default — both subtly tinted toward this
-   *  level's mood colour. */
-  private monsterTint(id: string): number {
-    return this.roleTint(
-      id === "pursuer" ? MONSTER_TINT.pursuer : MONSTER_TINT.lurker,
-    );
-  }
-
-  /** Non-pursuer ambient monsters roll as Hounds — faster, leaner, drawn by
-   *  noise — from Level 1 onward, so the threat mix isn't identical every
-   *  run. Deterministic per spawn position so a given seed always resolves
-   *  the same way. */
-  private isHoundSpawn(id: string, x: number, y: number): boolean {
-    if (id === "pursuer") return false;
-    if (this.levelIndex < HOUND.minLevelIndex) return false;
-    return hash01(x, y, this.levelIndex * 97 + 13) < HOUND.spawnChance;
-  }
-
   private spawnMonsters(): void {
     this.monsters = this.level.monsters.map((spawn) => {
       const origin = this.centreOf(spawn.x, spawn.y);
       const waypoints = spawn.patrol.map((p) => this.centreOf(p.x, p.y));
-      const isHound = this.isHoundSpawn(spawn.id, spawn.x, spawn.y);
+      // `spawn.kind` comes straight from the generator's roster roll (see
+      // levels/roster.ts) — every kind's tuning/tint/scale is looked up
+      // generically from the single source of truth instead of a
+      // Hound-only special case.
+      const kindConfig = MONSTER_KIND_CONFIG[spawn.kind];
       const monster = new Monster(
         this,
         origin.x,
         origin.y,
         waypoints,
-        isHound ? HOUND_TUNING : DEFAULT_MONSTER_TUNING,
-        isHound ? this.roleTint(MONSTER_TINT.hound) : this.monsterTint(spawn.id),
-        isHound ? { scaleX: HOUND.scaleX, scaleY: HOUND.scaleY } : undefined,
+        kindConfig.tuning,
+        this.roleTint(kindConfig.tint),
+        {
+          ...(kindConfig.noWalkCycle !== undefined && {
+            noWalkCycle: kindConfig.noWalkCycle,
+          }),
+          ...(kindConfig.scale && {
+            scaleX: kindConfig.scale.x,
+            scaleY: kindConfig.scale.y,
+          }),
+        },
       );
       monster.setDepth(90);
-      if (isHound) this.houndMonsters.add(monster);
+      this.monsterKinds.set(monster, spawn.kind);
       this.physics.add.collider(monster, this.walls);
       return monster;
     });
@@ -1296,6 +1291,7 @@ export class MainScene extends Phaser.Scene {
       this.hotbarIcon.setPosition(x + 17, y + 15);
       this.hotbarLabel.setPosition(x + 3, y + 22);
     }
+    this.updateHudTransform();
   };
 
   /** Full-screen dark pulse used to sell the monster's unseen presence, plus
@@ -1314,6 +1310,32 @@ export class MainScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(901);
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize);
+  }
+
+  /** Container for every fixed-position HUD element — see the field comment
+   *  on {@link hudContainer} for why this needs its own zoom compensation
+   *  instead of plain `setScrollFactor(0)`. */
+  private buildHudContainer(): void {
+    this.hudContainer = this.add
+      .container(0, 0)
+      .setScrollFactor(0)
+      .setDepth(1000);
+    this.updateHudTransform();
+  }
+
+  /** Keeps {@link hudContainer}'s transform at the inverse of the camera's
+   *  current zoom so its children can use plain, unscaled screen-pixel
+   *  coordinates — called on resize and every frame the zoom changes (the
+   *  fear-driven creep in {@link updateFear} means that's continuous, not
+   *  just once at level load). */
+  private updateHudTransform(): void {
+    if (!this.hudContainer?.active) return;
+    const cam = this.cameras.main;
+    const zoom = cam.zoom;
+    const cx = cam.width / 2;
+    const cy = cam.height / 2;
+    this.hudContainer.setPosition(cx * (1 - 1 / zoom), cy * (1 - 1 / zoom));
+    this.hudContainer.setScale(1 / zoom);
   }
 
   /** Permanent oldschool CRT dressing — screen-space scanlines + a jittered
@@ -1401,9 +1423,10 @@ export class MainScene extends Phaser.Scene {
         })) ?? [],
       );
     }
-    const speed = this.houndMonsters.has(monster)
-      ? this.pursuitSpeed * HOUND.chaseSpeedMultiplier
-      : this.pursuitSpeed;
+    const speed =
+      this.monsterKinds.get(monster) === "hound"
+        ? this.pursuitSpeed * HOUND.chaseSpeedMultiplier
+        : this.pursuitSpeed;
     monster.followChasePath(speed, playerPos);
   }
 
@@ -1555,6 +1578,7 @@ export class MainScene extends Phaser.Scene {
     const targetZoom = this.baseZoom + fear * 0.13;
     this.camZoom = Phaser.Math.Linear(this.camZoom, targetZoom, 0.06);
     this.cameras.main.setZoom(this.camZoom);
+    this.updateHudTransform();
 
     const v = this.vignetteFilter;
     if (v) {
@@ -1921,7 +1945,7 @@ export class MainScene extends Phaser.Scene {
     this.lastCueAt = time;
     // Louder the closer it is.
     const closeness = 1 - nearest / DREAD.presenceRadius;
-    if (nearestMonster && this.houndMonsters.has(nearestMonster)) {
+    if (nearestMonster && this.monsterKinds.get(nearestMonster) === "hound") {
       this.audio.bark(0.3 + closeness * 0.45);
     } else {
       this.audio.growl(0.25 + closeness * 0.4);
