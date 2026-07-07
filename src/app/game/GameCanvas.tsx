@@ -16,6 +16,10 @@ export default function GameCanvas() {
     void import("@/game/core/createGame").then(({ createGame }) => {
       if (disposed || !containerRef.current) return;
       game = createGame(containerRef.current);
+      // Dev-only handle so e2e/debug tooling can reach the running game.
+      if (process.env.NODE_ENV !== "production") {
+        (window as unknown as { __GAME__?: Phaser.Game }).__GAME__ = game;
+      }
     });
 
     return () => {

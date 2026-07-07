@@ -27,6 +27,13 @@ export const MonsterSpawnSchema = z.object({
   patrol: z.array(PointSchema).default([]),
 });
 
+export const RectSchema = z.object({
+  x: z.number().int().nonnegative(),
+  y: z.number().int().nonnegative(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+});
+
 export const LevelSchema = z
   .object({
     id: z.string().min(1).max(64),
@@ -41,6 +48,10 @@ export const LevelSchema = z
     }),
     zones: z.array(ZoneSchema).default([]),
     monsters: z.array(MonsterSpawnSchema).default([]),
+    /** Tile the player escapes through. */
+    exit: PointSchema.optional(),
+    /** Entering this zone wakes the monsters and starts the chase. */
+    pursuitTrigger: RectSchema.optional(),
   })
   .superRefine((level, ctx) => {
     if (level.tiles.length !== level.width * level.height) {
@@ -79,10 +90,38 @@ export const LevelSchema = z
         }
       });
     });
+    if (level.exit) {
+      if (!inBounds(level.exit.x, level.exit.y)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "exit is outside level bounds",
+          path: ["exit"],
+        });
+      } else if (
+        level.tiles[level.exit.y * level.width + level.exit.x] === TileKind.Wall
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "exit is on a wall tile",
+          path: ["exit"],
+        });
+      }
+    }
+    if (level.pursuitTrigger) {
+      const t = level.pursuitTrigger;
+      if (t.x + t.width > level.width || t.y + t.height > level.height) {
+        ctx.addIssue({
+          code: "custom",
+          message: "pursuitTrigger extends outside level bounds",
+          path: ["pursuitTrigger"],
+        });
+      }
+    }
   });
 
 export type Zone = z.infer<typeof ZoneSchema>;
 export type MonsterSpawn = z.infer<typeof MonsterSpawnSchema>;
+export type Rect = z.infer<typeof RectSchema>;
 export type LevelData = z.infer<typeof LevelSchema>;
 
 export function parseLevel(input: unknown): LevelData {

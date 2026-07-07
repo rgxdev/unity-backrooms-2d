@@ -14,6 +14,17 @@ export const MONSTER = {
   bodyInset: 3,
 } as const;
 
+/** Scripted-dread pacing knobs (see MonsterDirector). */
+export const DREAD = {
+  /** World radius within which the player can hear the lurking monster. */
+  presenceRadius: 210,
+  /** Min gap between ambient presence cues (ms). */
+  cueCooldownMs: 4500,
+  /** Chase speed: above the walk (140), below the sprint (215) — sprint to
+   *  escape, and it stays right on your heels. */
+  pursuitSpeed: 152,
+} as const;
+
 export const COLORS = {
   // Woven carpet floor — warm mustard with visible thread weave
   floor: 0xc4b158,
@@ -42,6 +53,10 @@ export const COLORS = {
   monsterLimb: 0x2b2338,
   monsterEye: 0xff5230,
   monsterMaw: 0xe8e2c4,
+  // Exit door (the way out)
+  exitFrame: 0x2a2416,
+  exitGlow: 0x6bf09a,
+  exitCore: 0x9dffc0,
   fog: 0x05050a,
 } as const;
 
@@ -51,6 +66,7 @@ export const TEXTURES = {
   wall: "tex-wall",
   player: "tex-player",
   monster: "tex-monster",
+  exit: "tex-exit",
 } as const;
 
 export const SCENES = {

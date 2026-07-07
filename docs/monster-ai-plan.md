@@ -1,10 +1,39 @@
 # Monster AI Plan
 
-Implementation: [`src/game/ai/MonsterStateMachine.ts`](../src/game/ai/MonsterStateMachine.ts)
+Pacing director: [`src/game/ai/MonsterDirector.ts`](../src/game/ai/MonsterDirector.ts)
+Reactive FSM (library): [`src/game/ai/MonsterStateMachine.ts`](../src/game/ai/MonsterStateMachine.ts)
 Types: [`src/game/ai/types.ts`](../src/game/ai/types.ts)
-Tests: [`MonsterStateMachine.test.ts`](../src/game/ai/MonsterStateMachine.test.ts)
 
-## Design
+## Scripted dread (current behaviour)
+
+The game is **not** a reactive-stealth hunt — it is a scripted scare. The player
+**cannot die**. Instead a [`MonsterDirector`](../src/game/ai/MonsterDirector.ts)
+drives three phases:
+
+```mermaid
+stateDiagram-v2
+  [*] --> Ambient
+  Ambient --> Pursuit: player enters pursuit trigger (near the end)
+  Ambient --> Escaped: player reaches exit
+  Pursuit --> Escaped: player reaches exit
+```
+
+| Phase   | Monster behaviour                                                   |
+| ------- | ------------------------------------------------------------------ |
+| Ambient | Patrols its path, **indifferent to the player** — only glimpsed in passing and *heard* when nearby (a growl + a dark screen pulse). Never approaches. |
+| Pursuit | Wakes with a roar + camera jolt and **bee-lines the player** at `DREAD.pursuitSpeed` (above the walk, below the sprint — sprint to escape). |
+| Escaped | Freezes; the "ENTKOMMEN" overlay confirms the near-miss.           |
+
+The pursuit trigger and exit are level data (`pursuitTrigger`, `exit`), so the
+"end" is authored per level. Sprint (hold **Shift**) is how the player outruns
+the chase.
+
+The reactive FSM below is retained as a tested library for a possible
+higher-difficulty mode, but is not wired into the current pacing.
+
+## Reactive FSM (library, unused in-game)
+
+### Design
 
 The brain is a deterministic, **engine-independent** finite state machine. It
 consumes a per-tick `Perception` snapshot and returns the current state. The

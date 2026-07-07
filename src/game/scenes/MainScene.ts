@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import {
   COLORS,
+  DREAD,
   SCENES,
   TEXTURES,
   TILE_SIZE,
@@ -16,7 +17,7 @@ import {
   TileVisibility,
   VisibilitySystem,
 } from "@/game/visibility/VisibilitySystem";
-import { buildPerception } from "@/game/ai/perception";
+import { GamePhase, MonsterDirector } from "@/game/ai/MonsterDirector";
 import { DEFAULT_MONSTER_TUNING } from "@/game/ai/types";
 import type { Vec2 } from "@/game/ai/steering";
 import { getSettings } from "@/lib/settings-store";
@@ -35,7 +36,12 @@ export class MainScene extends Phaser.Scene {
   private visibility!: VisibilitySystem;
   private walls!: Phaser.Physics.Arcade.StaticGroup;
   private monsters: Monster[] = [];
-  private noiseEvents: Vec2[] = [];
+
+  private readonly director = new MonsterDirector();
+  private phase: GamePhase = GamePhase.Ambient;
+  private presenceOverlay!: Phaser.GameObjects.Rectangle;
+  private lastCueAt = -Infinity;
+  private escapeShown = false;
 
   private fogTiles: Phaser.GameObjects.Rectangle[] = [];
   private fogState: Int8Array = new Int8Array(0);
@@ -76,6 +82,8 @@ export class MainScene extends Phaser.Scene {
       VISIBILITY.revealRadiusTiles,
     );
     this.spawnMonsters();
+    this.buildExit();
+    this.buildPresenceOverlay();
     this.audio = new AudioManager(this.sound);
 
     if (getSettings().showFps) {
@@ -161,9 +169,7 @@ export class MainScene extends Phaser.Scene {
       spawn.y * TILE_SIZE + TILE_SIZE / 2,
     );
     this.player.setDepth(100);
-    this.controller = new PlayerController(this, this.player, (x, y) =>
-      this.noiseEvents.push({ x, y }),
-    );
+    this.controller = new PlayerController(this, this.player);
     this.physics.add.collider(this.player, this.walls);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
   }
@@ -188,49 +194,149 @@ export class MainScene extends Phaser.Scene {
       );
       monster.setDepth(90);
       this.physics.add.collider(monster, this.walls);
-      monster.onCatch = () => this.onPlayerCaught();
       return monster;
     });
   }
 
-  /** Player was reached by a monster: reset both back to their spawns. */
-  private onPlayerCaught(): void {
-    const { spawn } = this.level;
-    const home = this.centreOf(spawn.x, spawn.y);
-    this.player.setPosition(home.x, home.y);
-    this.player.setVelocity(0, 0);
-    this.cameras.main.flash(280, 120, 0, 0);
-    this.monsters.forEach((m) => m.resetToPatrol());
+  private buildExit(): void {
+    const exit = this.level.exit;
+    if (!exit) return;
+    const c = this.centreOf(exit.x, exit.y);
+    const door = this.add.image(c.x, c.y, TEXTURES.exit).setDepth(-5);
+    // Gentle pulse so the way out reads as the goal.
+    this.tweens.add({
+      targets: door,
+      alpha: { from: 0.7, to: 1 },
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.InOut",
+    });
   }
 
-  private updateMonsters(deltaSeconds: number): void {
-    if (this.monsters.length === 0) return;
-    const playerPos: Vec2 = { x: this.player.x, y: this.player.y };
-    const playerTileX = Math.floor(this.player.x / TILE_SIZE);
-    const playerTileY = Math.floor(this.player.y / TILE_SIZE);
-    const { sightRange, hearingRange } = DEFAULT_MONSTER_TUNING;
+  /** Full-screen dark pulse used to sell the monster's unseen presence. */
+  private buildPresenceOverlay(): void {
+    const cam = this.cameras.main;
+    this.presenceOverlay = this.add
+      .rectangle(0, 0, cam.width, cam.height, 0x120018, 0)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(900);
+    this.scale.on(Phaser.Scale.Events.RESIZE, () => {
+      this.presenceOverlay.setSize(cam.width, cam.height);
+    });
+  }
 
-    for (const monster of this.monsters) {
-      const monsterTileX = Math.floor(monster.x / TILE_SIZE);
-      const monsterTileY = Math.floor(monster.y / TILE_SIZE);
-      const perception = buildPerception({
-        monster: { x: monster.x, y: monster.y },
-        player: playerPos,
-        sightRange,
-        hearingRange,
-        noises: this.noiseEvents,
-        hasLineOfSight: () =>
-          this.visibility.hasLineOfSight(
-            monsterTileX,
-            monsterTileY,
-            playerTileX,
-            playerTileY,
-            (x, y) => this.isWallTile(x, y),
-          ),
-      });
-      monster.think(deltaSeconds, perception, playerPos);
+  private playerTile(): Vec2 {
+    return {
+      x: Math.floor(this.player.x / TILE_SIZE),
+      y: Math.floor(this.player.y / TILE_SIZE),
+    };
+  }
+
+  private inRect(px: number, py: number, r: LevelData["pursuitTrigger"]): boolean {
+    if (!r) return false;
+    return px >= r.x && px < r.x + r.width && py >= r.y && py < r.y + r.height;
+  }
+
+  /** Advance the dread director and drive the monsters for the current phase. */
+  private updateAi(time: number): void {
+    if (this.monsters.length === 0) return;
+    const tile = this.playerTile();
+    const atExit =
+      !!this.level.exit &&
+      tile.x === this.level.exit.x &&
+      tile.y === this.level.exit.y;
+    const inPursuitTrigger = this.inRect(
+      tile.x,
+      tile.y,
+      this.level.pursuitTrigger,
+    );
+
+    const prev = this.phase;
+    this.phase = this.director.update({ inPursuitTrigger, atExit });
+    if (this.phase !== prev) this.onPhaseChange(this.phase);
+
+    const playerPos: Vec2 = { x: this.player.x, y: this.player.y };
+    switch (this.phase) {
+      case GamePhase.Ambient:
+        for (const m of this.monsters) m.tickAmbient();
+        this.presenceCue(time, playerPos);
+        break;
+      case GamePhase.Pursuit:
+        for (const m of this.monsters) m.pursue(playerPos, DREAD.pursuitSpeed);
+        break;
+      case GamePhase.Escaped:
+        for (const m of this.monsters) m.freeze();
+        break;
     }
-    this.noiseEvents.length = 0;
+  }
+
+  private onPhaseChange(phase: GamePhase): void {
+    if (phase === GamePhase.Pursuit) {
+      // The end is near — the monster wakes with a roar and a jolt.
+      this.audio.roar();
+      this.cameras.main.flash(320, 90, 0, 0);
+      this.cameras.main.shake(400, 0.006);
+    } else if (phase === GamePhase.Escaped) {
+      this.showEscape();
+    }
+  }
+
+  /** Occasional "you can hear it" beat while the monster lurks nearby. */
+  private presenceCue(time: number, playerPos: Vec2): void {
+    if (time - this.lastCueAt < DREAD.cueCooldownMs) return;
+    const nearest = Math.min(
+      ...this.monsters.map((m) => m.distanceTo(playerPos)),
+    );
+    if (nearest > DREAD.presenceRadius) return;
+
+    this.lastCueAt = time;
+    // Louder the closer it is.
+    const closeness = 1 - nearest / DREAD.presenceRadius;
+    this.audio.growl(0.25 + closeness * 0.4);
+    this.tweens.add({
+      targets: this.presenceOverlay,
+      alpha: { from: 0, to: 0.18 + closeness * 0.15 },
+      duration: 380,
+      yoyo: true,
+      ease: "Sine.InOut",
+    });
+  }
+
+  private showEscape(): void {
+    if (this.escapeShown) return;
+    this.escapeShown = true;
+    const cam = this.cameras.main;
+    const veil = this.add
+      .rectangle(0, 0, cam.width, cam.height, 0x02040a, 0)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(1001);
+    this.tweens.add({ targets: veil, alpha: 0.82, duration: 900 });
+    this.add
+      .text(cam.width / 2, cam.height / 2, "ENTKOMMEN", {
+        fontFamily: "monospace",
+        fontSize: "40px",
+        color: "#9dffc0",
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1002);
+    this.add
+      .text(
+        cam.width / 2,
+        cam.height / 2 + 40,
+        "Du bist gerade so entkommen.",
+        {
+          fontFamily: "monospace",
+          fontSize: "14px",
+          color: "#c9b458",
+        },
+      )
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1002);
   }
 
   private markZoneDiscovery(tileX: number, tileY: number): void {
@@ -258,7 +364,7 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  override update(_time: number, delta: number): void {
+  override update(time: number): void {
     this.controller.update();
 
     const tileX = Math.floor(this.player.x / TILE_SIZE);
@@ -271,7 +377,7 @@ export class MainScene extends Phaser.Scene {
       this.refreshFog();
     }
 
-    this.updateMonsters(delta / 1000);
+    this.updateAi(time);
 
     if (this.fpsText) {
       this.fpsText.setText(`FPS ${Math.round(this.game.loop.actualFps)}`);

@@ -37,6 +37,7 @@ export class PreloadScene extends Phaser.Scene {
     this.makeWall(TEXTURES.wall);
     this.makePlayer(TEXTURES.player);
     this.makeMonster(TEXTURES.monster);
+    this.makeExit(TEXTURES.exit);
   }
 
   /** Fill a single "pixel" cell. Keeps sprite work readable. */
@@ -181,6 +182,24 @@ export class PreloadScene extends Phaser.Scene {
     this.px(g, COLORS.monsterBodyShade, 10, 10, 1, 2);
 
     g.generateTexture(key, s, s);
+    g.destroy();
+  }
+
+  /** Glowing exit doorway — the escape. Fills a full tile. */
+  private makeExit(key: string): void {
+    const t = TILE_SIZE;
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+
+    // Dark frame.
+    this.px(g, COLORS.exitFrame, 4, 2, t - 8, t - 2);
+    // Glowing portal, brightest at the centre.
+    this.px(g, COLORS.exitGlow, 7, 5, t - 14, t - 7);
+    this.px(g, COLORS.exitCore, 10, 8, t - 20, t - 12);
+    // Frame keyline.
+    g.lineStyle(2, 0x000000, 0.4);
+    g.strokeRect(4, 2, t - 8, t - 2);
+
+    g.generateTexture(key, t, t);
     g.destroy();
   }
 }

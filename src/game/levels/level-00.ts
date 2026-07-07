@@ -52,6 +52,8 @@ function build(): LevelData {
       { id: "hidden-vault", x: 33, y: 18, w: 8, h: 11, hidden: true },
     ].map(({ w, h, ...rest }) => ({ ...rest, width: w, height: h })),
     monsters: [
+      // Roams the central room across the player's route — seen and heard in
+      // passing, but never approaches until the chase is armed.
       {
         id: "hound-central",
         x: 23,
@@ -63,18 +65,21 @@ function build(): LevelData {
           { x: 19, y: 22 },
         ],
       },
+      // Lurks in the corridor above the vault; when the player enters the vault
+      // it descends and chases them to the exit.
       {
-        id: "stalker-east",
+        id: "stalker-vault",
         x: 35,
-        y: 5,
+        y: 13,
         patrol: [
-          { x: 32, y: 3 },
-          { x: 39, y: 3 },
-          { x: 39, y: 9 },
-          { x: 32, y: 9 },
+          { x: 35, y: 11 },
+          { x: 35, y: 17 },
         ],
       },
     ],
+    // The way out sits deep in the hidden vault; the vault itself arms the chase.
+    exit: { x: 39, y: 27 },
+    pursuitTrigger: { x: 33, y: 18, width: 8, height: 11 },
   });
 }
 
