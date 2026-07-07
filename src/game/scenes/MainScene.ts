@@ -555,7 +555,12 @@ export class MainScene extends Phaser.Scene {
       Phaser.Input.Keyboard.KeyCodes.ONE,
     );
 
-    this.flashlightGraphics = this.add.graphics().setDepth(550);
+    // Depth must stay under the fog tiles (depth 500, see buildFog) — the
+    // glow needs to render *underneath* the fog overlay so unrevealed tiles
+    // still hide it completely; only where the fog has actually cleared does
+    // the warm light show through, exactly matching the real reveal instead
+    // of an additive haze bleeding into tiles the player can't actually see.
+    this.flashlightGraphics = this.add.graphics().setDepth(495);
     this.flashlightGraphics.setBlendMode(Phaser.BlendModes.ADD);
 
     this.buildHotbar();
@@ -668,7 +673,7 @@ export class MainScene extends Phaser.Scene {
     const radius = FLASHLIGHT.coneRadiusTiles * TILE_SIZE;
     const g = this.flashlightGraphics;
     g.clear();
-    g.fillStyle(0xfff0c0, 0.16);
+    g.fillStyle(0xfff0c0, 0.26);
     g.beginPath();
     g.moveTo(this.player.x, this.player.y);
     g.arc(
