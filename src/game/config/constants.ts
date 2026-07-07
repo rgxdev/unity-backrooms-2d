@@ -174,12 +174,30 @@ export const TEXTURES = {
   floor: "tex-floor",
   floorAlt: "tex-floor-alt",
   wall: "tex-wall",
+  wallCrack: "tex-wall-crack",
   player: "tex-player",
+  playerWalk: "tex-player-walk",
   playerBack: "tex-player-back",
+  playerBackWalk: "tex-player-back-walk",
   monster: "tex-monster",
+  monsterWalk: "tex-monster-walk",
   monsterBack: "tex-monster-back",
+  monsterBackWalk: "tex-monster-back-walk",
   exit: "tex-exit",
   hole: "tex-hole",
+  rubble: "tex-rubble",
+} as const;
+
+/** Walk-cycle frame swap: how often the "stride" leg-offset frame alternates
+ *  with the neutral frame while a character is moving. */
+export const WALK_CYCLE_MS = 190;
+
+/** Per-role monster tints (Phaser setTint) so pursuer / lurker / jump-scare
+ *  read as distinct threats at a glance without new art per role. */
+export const MONSTER_TINT = {
+  pursuer: 0xff9d84, // hottest — the one that ends the level
+  lurker: 0xffffff, // neutral — the default patrol threat
+  jumpscare: 0xcbb8ff, // pale violet — the fleeting glimpse
 } as const;
 
 export const SCENES = {

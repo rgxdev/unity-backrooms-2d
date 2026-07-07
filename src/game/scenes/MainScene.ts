@@ -5,6 +5,7 @@ import {
   DREAD,
   EXIT_DREAD,
   JUMPSCARE,
+  MONSTER_TINT,
   SCENES,
   TEXTURES,
   TILE_SIZE,
@@ -287,6 +288,12 @@ export class MainScene extends Phaser.Scene {
     };
   }
 
+  /** Pursuer reads hottest (it's the one that ends the level); everything
+   *  else patrols as the neutral default. */
+  private monsterTint(id: string): number {
+    return id === "pursuer" ? MONSTER_TINT.pursuer : MONSTER_TINT.lurker;
+  }
+
   private spawnMonsters(): void {
     this.monsters = this.level.monsters.map((spawn) => {
       const origin = this.centreOf(spawn.x, spawn.y);
@@ -297,6 +304,7 @@ export class MainScene extends Phaser.Scene {
         origin.y,
         waypoints,
         DEFAULT_MONSTER_TUNING,
+        this.monsterTint(spawn.id),
       );
       monster.setDepth(90);
       this.physics.add.collider(monster, this.walls);
@@ -319,6 +327,35 @@ export class MainScene extends Phaser.Scene {
       repeatDelay: 90,
       ease: "Sine.InOut",
     });
+    this.dressExitNiche(exit);
+  }
+
+  /** Crack overlays on the real wall tiles around the breach, and a little
+   *  rubble on the room-side floor tile it broke into — so the exit reads
+   *  as actual damage to the wall, not a differently-coloured tile. */
+  private dressExitNiche(exit: { x: number; y: number }): void {
+    const deltas: Vec2[] = [
+      { x: 1, y: 0 },
+      { x: -1, y: 0 },
+      { x: 0, y: 1 },
+      { x: 0, y: -1 },
+    ];
+    for (const d of deltas) {
+      const nx = exit.x + d.x;
+      const ny = exit.y + d.y;
+      if (nx < 0 || ny < 0 || nx >= this.level.width || ny >= this.level.height) {
+        continue;
+      }
+      const nc = this.centreOf(nx, ny);
+      if (this.isWallTile(nx, ny)) {
+        this.add
+          .image(nc.x, nc.y, TEXTURES.wallCrack)
+          .setTint(this.theme.tint)
+          .setDepth(1);
+      } else {
+        this.add.image(nc.x, nc.y, TEXTURES.rubble).setDepth(-8);
+      }
+    }
   }
 
   private readonly handleResize = (): void => {
@@ -382,7 +419,7 @@ export class MainScene extends Phaser.Scene {
         const proximity = this.exitProximity(tile.x, tile.y);
         const speedBoost = 1 + proximity * EXIT_DREAD.maxSpeedBoost;
         for (const m of this.monsters) m.tickAmbient(speedBoost);
-        this.presenceCue(time, playerPos);
+        this.presenceCue(time, playerPos, proximity);
         this.updateJumpscare(time, playerPos, proximity);
         break;
       }
@@ -480,9 +517,11 @@ export class MainScene extends Phaser.Scene {
     this.scheduleRestart(2800);
   }
 
-  /** Occasional "you can hear it" beat while the monster lurks nearby. */
-  private presenceCue(time: number, playerPos: Vec2): void {
-    if (time - this.lastCueAt < DREAD.cueCooldownMs) return;
+  /** Occasional "you can hear it" beat while the monster lurks nearby — fires
+   *  more often the closer the player gets to the exit. */
+  private presenceCue(time: number, playerPos: Vec2, exitProximity: number): void {
+    const cooldown = DREAD.cueCooldownMs * (1 - exitProximity * (1 - EXIT_DREAD.minIntervalScale));
+    if (time - this.lastCueAt < cooldown) return;
     const nearest = Math.min(
       ...this.monsters.map((m) => m.distanceTo(playerPos)),
     );
@@ -537,7 +576,7 @@ export class MainScene extends Phaser.Scene {
         dist <= JUMPSCARE.attackRadius
       ) {
         this.jumpscareAttacked = true;
-        this.audio.roar();
+        this.audio.snarl();
         this.cameras.main.flash(220, 120, 0, 0);
         this.jumpscareMonster.pursue(playerPos, this.pursuitSpeed * 1.4);
         if (this.lethal) this.onDeath();
@@ -578,7 +617,14 @@ export class MainScene extends Phaser.Scene {
       }
 
       const c = this.centreOf(tx, ty);
-      const monster = new Monster(this, c.x, c.y, [], DEFAULT_MONSTER_TUNING);
+      const monster = new Monster(
+        this,
+        c.x,
+        c.y,
+        [],
+        DEFAULT_MONSTER_TUNING,
+        MONSTER_TINT.jumpscare,
+      );
       monster.setDepth(90);
       monster.setAlpha(0);
       this.physics.add.collider(monster, this.walls);
@@ -591,7 +637,7 @@ export class MainScene extends Phaser.Scene {
         JUMPSCARE.maxVisibleMs,
       );
       this.jumpscareDespawnAt = time + visibleMs;
-      this.audio.growl(0.3 + exitProximity * 0.3);
+      this.audio.shriek(0.3 + exitProximity * 0.3);
       return;
     }
   }

@@ -91,7 +91,7 @@ export class PlayerController {
       approach(this.velocity.y, this.targetVelocity.y, step),
     );
     this.player.setVelocity(this.velocity.x, this.velocity.y);
-    this.player.updateFacing(this.velocity.x, this.velocity.y);
+    this.player.updateFacing(this.velocity.x, this.velocity.y, deltaMs);
 
     // Sprinting is loud — nearby monsters can hear it and start searching.
     if (sprinting) this.onNoise?.(this.player.x, this.player.y);

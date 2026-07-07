@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { MONSTER, TEXTURES } from "@/game/config/constants";
+import { MONSTER, TEXTURES, WALK_CYCLE_MS } from "@/game/config/constants";
 import type { MonsterTuning } from "@/game/ai/types";
 import {
   hasReached,
@@ -25,6 +25,10 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
   private readonly waypoints: Vec2[];
   private readonly spawnPoint: Vec2;
   private waypointIndex = 0;
+  private facingBack = false;
+  private walkFrame = false;
+  private walkTimer = 0;
+  private moving = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -32,6 +36,9 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
     y: number,
     waypoints: Vec2[],
     tuning: MonsterTuning,
+    /** Per-role tint (see MONSTER_TINT) so pursuer/lurker/jump-scare read as
+     *  distinct threats at a glance. */
+    tint?: number,
   ) {
     super(scene, x, y, TEXTURES.monster);
     scene.add.existing(this);
@@ -40,6 +47,7 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
     this.tuning = tuning;
     this.waypoints = waypoints;
     this.spawnPoint = { x, y };
+    if (tint !== undefined) this.setTint(tint);
 
     this.setOrigin(0.5, 0.5);
     const body = this.body as Phaser.Physics.Arcade.Body;
@@ -66,11 +74,38 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
     return { x: this.x, y: this.y };
   }
 
+  /** Swaps the leg-stride walk-cycle frame on a fixed cadence while moving —
+   *  driven every frame regardless of which behaviour is currently active. */
+  override preUpdate(time: number, delta: number): void {
+    super.preUpdate(time, delta);
+    if (!this.moving) return;
+    this.walkTimer += delta;
+    if (this.walkTimer >= WALK_CYCLE_MS) {
+      this.walkTimer -= WALK_CYCLE_MS;
+      this.walkFrame = !this.walkFrame;
+      this.applyTexture();
+    }
+  }
+
+  private applyTexture(): void {
+    if (this.facingBack) {
+      this.setTexture(this.walkFrame ? TEXTURES.monsterBackWalk : TEXTURES.monsterBack);
+    } else {
+      this.setTexture(this.walkFrame ? TEXTURES.monsterWalk : TEXTURES.monster);
+    }
+  }
+
   private drive(velocity: Vec2): void {
     this.setVelocity(velocity.x, velocity.y);
-    if (velocity.y < -5) this.setTexture(TEXTURES.monsterBack);
-    else if (velocity.y > 5 || velocity.x !== 0) this.setTexture(TEXTURES.monster);
+    this.moving = velocity.x !== 0 || velocity.y !== 0;
+    if (!this.moving) {
+      this.walkTimer = 0;
+      this.walkFrame = false;
+    }
+    if (velocity.y < -5) this.facingBack = true;
+    else if (velocity.y > 5 || velocity.x !== 0) this.facingBack = false;
     if (velocity.x !== 0) this.setFlipX(velocity.x < 0);
+    this.applyTexture();
   }
 
   /** Walk the looping patrol path (stationary if it has no waypoints).
@@ -100,6 +135,7 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
 
   freeze(): void {
     this.setVelocity(0, 0);
+    this.moving = false;
   }
 
   /** World distance from this monster to the given point. */

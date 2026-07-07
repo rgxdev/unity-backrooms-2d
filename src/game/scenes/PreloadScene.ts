@@ -8,6 +8,8 @@ import {
   TILE_SIZE,
 } from "@/game/config/constants";
 
+type Facing = "front" | "back";
+
 export class PreloadScene extends Phaser.Scene {
   constructor() {
     super(SCENES.preload);
@@ -35,12 +37,18 @@ export class PreloadScene extends Phaser.Scene {
     this.makeCarpet(TEXTURES.floor, 0);
     this.makeCarpet(TEXTURES.floorAlt, 1);
     this.makeWall(TEXTURES.wall);
-    this.makePlayer(TEXTURES.player, "front");
-    this.makePlayer(TEXTURES.playerBack, "back");
-    this.makeMonster(TEXTURES.monster, "front");
-    this.makeMonster(TEXTURES.monsterBack, "back");
+    this.makeWallCrack(TEXTURES.wallCrack);
+    this.makePlayer(TEXTURES.player, "front", false);
+    this.makePlayer(TEXTURES.playerWalk, "front", true);
+    this.makePlayer(TEXTURES.playerBack, "back", false);
+    this.makePlayer(TEXTURES.playerBackWalk, "back", true);
+    this.makeMonster(TEXTURES.monster, "front", false);
+    this.makeMonster(TEXTURES.monsterWalk, "front", true);
+    this.makeMonster(TEXTURES.monsterBack, "back", false);
+    this.makeMonster(TEXTURES.monsterBackWalk, "back", true);
     this.makeExit(TEXTURES.exit);
     this.makeHole(TEXTURES.hole);
+    this.makeRubble(TEXTURES.rubble);
   }
 
   /** Fill a single "pixel" cell. Keeps sprite work readable. */
@@ -169,14 +177,84 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   /**
+   * A wall tile fractured by whatever broke through nearby — same worn
+   * plaster base as {@link makeWall}, plus dark jagged crack lines and a
+   * chip of missing plaster. Dressed around the exit niche so the breach
+   * reads as real damage, not just a differently-coloured tile.
+   */
+  private makeWallCrack(key: string): void {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    const t = TILE_SIZE;
+    this.px(g, COLORS.wall, 0, 0, t, t);
+    for (let x = 3; x < t; x += 7) {
+      this.px(g, COLORS.wallStripe, x, 2, 1, t - 4, 0.35);
+    }
+    for (let y = 0; y < t; y++) {
+      for (let x = 0; x < t; x++) {
+        const n = this.noise(x + 401, y + 401);
+        if (n > 0.94) this.px(g, COLORS.wallSpeckleHi, x, y, 1, 1, 0.5);
+        else if (n < 0.05) this.px(g, COLORS.wallSpeckleLo, x, y, 1, 1, 0.4);
+      }
+    }
+    this.px(g, COLORS.wallHi, 0, 0, t, 1, 0.9);
+    this.px(g, COLORS.wallShade, 0, t - 1, t, 1, 0.85);
+
+    // Jagged crack lines, forking from one corner toward the centre.
+    const crack: Array<[number, number]> = [
+      [4, 2], [7, 6], [6, 11], [10, 15], [9, 20], [13, 24], [12, 29],
+    ];
+    for (let i = 0; i < crack.length - 1; i++) {
+      const [x0, y0] = crack[i]!;
+      const [x1, y1] = crack[i + 1]!;
+      const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let s = 0; s <= steps; s++) {
+        const x = Math.round(x0 + ((x1 - x0) * s) / steps);
+        const y = Math.round(y0 + ((y1 - y0) * s) / steps);
+        this.px(g, COLORS.wallDark, x, y, 1, 1, 0.8);
+      }
+    }
+    // A small chip of missing plaster near the fork.
+    this.rr(g, COLORS.wallShade, 16, 8, 5, 4, 0.9);
+    this.px(g, COLORS.wallDark, 17, 9, 3, 2, 0.6);
+
+    g.generateTexture(key, t, t);
+    g.destroy();
+  }
+
+  /**
+   * Small debris pile on a mostly-transparent background — scattered on the
+   * floor tiles beside the exit niche so the breach reads as something that
+   * broke recently, not a clean cut-out.
+   */
+  private makeRubble(key: string): void {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    const t = TILE_SIZE;
+    const chunks: Array<[number, number, number, number]> = [
+      [10, 20, 4, 3],
+      [16, 23, 3, 2],
+      [8, 25, 3, 2],
+      [20, 18, 3, 3],
+    ];
+    for (const [x, y, w, h] of chunks) {
+      g.fillStyle(COLORS.shadow, 0.25);
+      g.fillEllipse(x + w / 2, y + h, w, 2);
+      this.rr(g, COLORS.wallShade, x, y, w, h, 0.95);
+      this.px(g, COLORS.wallDark, x, y + h - 1, w, 1, 0.6);
+    }
+    g.generateTexture(key, t, t);
+    g.destroy();
+  }
+
+  /**
    * Top-down character sprite: rounded silhouette, hair, shaded shirt/legs
    * with soft multi-tone shading and a dark keyline — a readable little
    * person with a gentle rounded shape instead of a two-tone square.
    * `facing` swaps the face (front) for a full head of hair and a spine
    * seam (back), so walking away from the camera reads differently to
-   * walking toward it.
+   * walking toward it. `stride` offsets the legs into a mid-step pose for
+   * the second walk-cycle frame.
    */
-  private makePlayer(key: string, facing: "front" | "back"): void {
+  private makePlayer(key: string, facing: Facing, stride: boolean): void {
     const s = PLAYER.size;
     const g = this.make.graphics({ x: 0, y: 0 }, false);
 
@@ -217,9 +295,13 @@ export class PreloadScene extends Phaser.Scene {
       this.px(g, COLORS.playerShirtShade, s / 2 - 0.5, 9, 1, 5, 0.6);
     }
 
-    // Legs, rounded stance with a centre seam.
-    this.rr(g, COLORS.playerPants, 3, 14, s - 6, 4, 1);
-    this.px(g, COLORS.playerPantsShade, s - 5, 15, 2, 3, 0.7);
+    // Legs, split left/right so a stride frame can offset them into a
+    // mid-step pose (one leg forward/up, one back/down).
+    const legW = (s - 6) / 2;
+    const shift = stride ? 1 : 0;
+    this.rr(g, COLORS.playerPants, 3, 14 - shift, legW, 4, 1);
+    this.rr(g, COLORS.playerPants, 3 + legW, 14 + shift, legW, 4, 1);
+    this.px(g, COLORS.playerPantsShade, s - 5, 15 + shift, 2, 3, 0.7);
     this.px(g, COLORS.playerOutline, s / 2 - 0.5, 14, 1, 4, 0.7);
 
     g.generateTexture(key, s, s);
@@ -231,9 +313,10 @@ export class PreloadScene extends Phaser.Scene {
    * and a pale maw — reads as a threat at a glance and keeps a soft organic
    * silhouette instead of a jagged block. `facing` swaps the glowing-eyes
    * face (front) for a ridged, faceless hunch (back) — worse to see chasing
-   * away from you than toward you.
+   * away from you than toward you. `stride` offsets its limbs into a
+   * lurching mid-step pose for the second walk-cycle frame.
    */
-  private makeMonster(key: string, facing: "front" | "back"): void {
+  private makeMonster(key: string, facing: Facing, stride: boolean): void {
     const s = MONSTER.size;
     const g = this.make.graphics({ x: 0, y: 0 }, false);
 
@@ -252,9 +335,11 @@ export class PreloadScene extends Phaser.Scene {
     // Shoulders / brow ridge.
     this.rr(g, COLORS.monsterBody, 2, 4, s - 4, 4, 1);
 
-    // Spindly limbs poking out the sides.
-    this.px(g, COLORS.monsterLimb, 1, s / 2 - 1, 2, 5);
-    this.px(g, COLORS.monsterLimb, s - 3, s / 2 - 1, 2, 5);
+    // Spindly limbs poking out the sides — offset opposite ways for the
+    // stride frame so the lurch reads as alternating steps.
+    const limbShift = stride ? 1 : 0;
+    this.px(g, COLORS.monsterLimb, 1, s / 2 - 1 - limbShift, 2, 5);
+    this.px(g, COLORS.monsterLimb, s - 3, s / 2 - 1 + limbShift, 2, 5);
 
     if (facing === "front") {
       // Glowing eyes with a soft outer bloom.
