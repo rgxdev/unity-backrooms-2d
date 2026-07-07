@@ -100,7 +100,10 @@ All persisted or imported data is validated with Zod before use:
 
 - **Levels**: add a `LevelData` to `src/game/levels` and register it. Levels can
   later be authored as external JSON and validated on import.
-- **Skins**: `skinId` already lives in settings; swap the player atlas keyed by
-  it without touching movement.
+- **Skins**: `skinId` in settings selects the equipped skin; `progress.unlockedSkins`
+  (see `src/game/skins/skinCatalog.ts`) gates each reward skin behind escaping
+  its official level. `PreloadScene` generates a full player atlas per skin
+  palette; `Player` picks its texture keys from the resolved `skinId` without
+  touching movement.
 - **Monsters**: `MonsterStateMachine` is ready; wire an entity + perception
   provider into `MainScene`.

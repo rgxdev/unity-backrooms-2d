@@ -36,7 +36,17 @@ milestone; features stay minimal until the prototype is stable.
 - Level system + level transitions.
 - Audio manager with music/SFX assets and per-channel volumes.
 - Settings persistence (done) + savegame persistence (schema done, wire store).
-- Skin selection groundwork (atlas swap keyed by `skinId`).
+- Skin selection (done) — reward skins unlocked by escaping each official
+  level, equipped via `skinId`, palette-swapped in the procedural player
+  atlas.
+- Expanded procedural audio (done) — ambient hum, flicker/whisper/thud
+  anomaly cues, reward chime, plus a shared React-side UI click sound.
+- `ProcessDirector` (done) — background ambience "process" that periodically
+  fires a random cosmetic anomaly, independent of `MonsterDirector`.
+- Stats/achievements tracking (done) — runs, escapes, deaths, falls, and
+  playtime persisted and shown on a new `/stats` page.
+- Chunked PreloadScene loading (done) — texture generation runs across
+  frames with a visible progress bar instead of one blocking burst.
 
 ## Week 6 — Polish & Release
 
