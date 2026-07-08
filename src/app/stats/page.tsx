@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { OFFICIAL_LEVELS } from "@/game/levels/officialLevels";
-import { SKINS } from "@/game/skins/skinCatalog";
+import { isSkinUnlocked, SKINS } from "@/game/skins/skinCatalog";
 import { playUiClick } from "@/lib/ui-sound";
 import { useProgress } from "../levels/useProgress";
 import { useStats } from "./useStats";
@@ -55,7 +55,10 @@ export default function StatsPage() {
         />
         <StatTile
           label="Skins Unlocked"
-          value={`${progress.unlockedSkins.length} / ${SKINS.length}`}
+          value={`${
+            SKINS.filter((s) => isSkinUnlocked(s, progress.unlockedSkins))
+              .length
+          } / ${SKINS.length}`}
         />
       </div>
 

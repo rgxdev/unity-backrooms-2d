@@ -71,6 +71,26 @@ export const OFFICIAL_LEVELS: readonly OfficialLevel[] = [
     blurb: "Scorched concrete and hazard tape. It knows you are here. Do not stop.",
     theme: { tint: 0xffffff, fog: 0x0c0604, style: "hazard" },
   },
+  {
+    index: 5,
+    id: "level-5",
+    name: "Level 5 — The Terror Hotel",
+    blurb:
+      "Mahogany panelling, wine-red carpet, and a front desk nobody staffs. " +
+      "The guests in period dress have no faces, and somewhere below, a " +
+      "party has been going on far, far too long. Do not accept the invite.",
+    theme: { tint: 0xffffff, fog: 0x0a0506, style: "hotel" },
+  },
+  {
+    index: 6,
+    id: "level-6",
+    name: "Level 6 — Lights Out",
+    blurb:
+      "Riveted steel and cable runs in the kind of dark that eats a torch " +
+      "beam whole. You'll hear the grin before you see it — and by then " +
+      "it has already seen you. Keep a wall at your back and move.",
+    theme: { tint: 0xffffff, fog: 0x020204, style: "lightsout" },
+  },
 ];
 
 export const LAST_LEVEL_INDEX = OFFICIAL_LEVELS.length - 1;

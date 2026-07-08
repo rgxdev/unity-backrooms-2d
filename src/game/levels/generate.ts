@@ -126,6 +126,57 @@ function addPillars(
 }
 
 /**
+ * A regular grid of structural pillars filling a large room — the classic
+ * Backrooms "pillar hall" (Level 0's documented pillar variation, Level 1's
+ * warehouse pillar rows), distinct from {@link addPillars}' random scatter.
+ * Spacing keeps every aisle at least two tiles wide and the room centre
+ * clear for corridor connections.
+ */
+function pillarGridHall(tiles: number[], width: number, r: Room): void {
+  const c = roomCentre(r);
+  for (let y = r.y + 2; y < r.y + r.h - 2; y += 3) {
+    for (let x = r.x + 2; x < r.x + r.w - 2; x += 3) {
+      if (Math.abs(x - c.x) <= 1 && Math.abs(y - c.y) <= 1) continue;
+      tiles[y * width + x] = TileKind.Wall;
+    }
+  }
+}
+
+/**
+ * Roll 0–2 of the documented themed sub-sections (sticky Red Rooms, unlit
+ * Blackout Zones — see `ZoneKind` and MainScene's zone masks) over interior
+ * rooms. Previously Level 0's hand-authored generator was the only place
+ * these existed; now any generated level can carry them, so consecutive runs
+ * of the same level read differently. Spawn and exit rooms stay untouched.
+ */
+function addThemedZones(
+  rooms: readonly Room[],
+  spawnRoom: Room,
+  exitRoom: Room,
+  rng: Rng,
+): Zone[] {
+  const candidates = rooms.filter((r) => r !== spawnRoom && r !== exitRoom);
+  if (candidates.length === 0) return [];
+  const zones: Zone[] = [];
+  const count = chance(rng, 0.55) ? (chance(rng, 0.35) ? 2 : 1) : 0;
+  const pool = shuffle(rng, [...candidates]);
+  for (let i = 0; i < count && i < pool.length; i++) {
+    const room = pool[i]!;
+    const kind = chance(rng, 0.5) ? "red" : "blackout";
+    zones.push({
+      id: `${kind}-zone-${i}`,
+      x: room.x,
+      y: room.y,
+      width: room.w,
+      height: room.h,
+      hidden: false,
+      kind,
+    });
+  }
+  return zones;
+}
+
+/**
  * Wall off a random rectangular corner of the room so it reads as an L-shape
  * instead of every room being a plain rectangle — pure shape variety, applied
  * before corridors are carved so the centre point corridors connect to always
@@ -320,10 +371,28 @@ export function generateLevel(input: GenerateInput): LevelData {
   const secret = addSecretRoom(tiles, width, height, rooms, rng);
   const zones: Zone[] = secret ? [secret.zone] : [];
 
-  // Interior pillars (skip the spawn room so the start stays open).
+  // Documented themed sub-sections (Red Rooms / Blackout Zones) over interior
+  // rooms — rolled after spawn/exit and before pillars so the zone rect
+  // matches the room it covers. The secret room stays plain: it's a refuge.
+  zones.push(
+    ...addThemedZones(
+      rooms.filter((r) => r !== secret?.room),
+      spawnRoom,
+      exitRoom,
+      rng,
+    ),
+  );
+
+  // Interior pillars (skip the spawn room so the start stays open). Large
+  // rooms occasionally trade the random scatter for a regular pillar-grid
+  // hall — the documented Backrooms "pillar variation".
   const pillarBudget = input.difficulty === "easy" ? 2 : 3;
   for (const r of rooms) {
     if (r === spawnRoom) continue;
+    if (r.w >= 9 && r.h >= 9 && chance(rng, 0.3)) {
+      pillarGridHall(tiles, width, r);
+      continue;
+    }
     addPillars(tiles, width, r, rng, randInt(rng, 1, pillarBudget));
   }
   // Never bury the spawn or exit tiles.

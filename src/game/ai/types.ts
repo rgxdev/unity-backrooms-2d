@@ -128,6 +128,47 @@ export const DEATHMOTH_TUNING: MonsterTuning = {
   reachRadius: 6,
 };
 
+/** The Duller (wiki entity-11) — a tall, featureless grey figure that drifts
+ *  after wanderers at a fixed, unhurried pace. Canonically it follows rather
+ *  than sprints (it wants to drain, not to run down), so even its "chase" is
+ *  barely faster than the player's walk — the dread is that it never stops. */
+export const DULLER_TUNING: MonsterTuning = {
+  ai: DEFAULT_AI_CONFIG,
+  patrolSpeed: 40,
+  chaseSpeed: 96,
+  searchSpeed: 55,
+  sightRange: 320,
+  hearingRange: 120,
+  reachRadius: 6,
+};
+
+/** The Wretch (wiki entity-140) — a broken, ruined wanderer-that-was; erratic
+ *  shuffling patrol, but a shrieking, flailing burst once provoked. Short
+ *  sight (its eyes are ruined) and sharp hearing, per the entity write-up. */
+export const WRETCH_TUNING: MonsterTuning = {
+  ai: DEFAULT_AI_CONFIG,
+  patrolSpeed: 44,
+  chaseSpeed: 158,
+  searchSpeed: 92,
+  sightRange: 150,
+  hearingRange: 280,
+  reachRadius: 6,
+};
+
+/** The Partygoer (wiki entity-67) — bright yellow, permanently smiling, and
+ *  canonically insistent that you join the party. Brisk sociable wandering,
+ *  and a fast committed "hug" chase once it notices you — friendly right up
+ *  until it isn't. */
+export const PARTYGOER_TUNING: MonsterTuning = {
+  ai: DEFAULT_AI_CONFIG,
+  patrolSpeed: 64,
+  chaseSpeed: 138,
+  searchSpeed: 85,
+  sightRange: 250,
+  hearingRange: 200,
+  reachRadius: 6,
+};
+
 /**
  * Every distinct monster identity a level spawn can carry. `lurker` is the
  * generic ambient default; `pursuer` is the level-agnostic scripted chase
@@ -143,4 +184,7 @@ export type MonsterKind =
   | "smiler"
   | "faceling"
   | "skinstealer"
-  | "deathmoth";
+  | "deathmoth"
+  | "duller"
+  | "wretch"
+  | "partygoer";

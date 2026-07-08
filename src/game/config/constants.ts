@@ -6,6 +6,9 @@ import {
   FACELING_TUNING,
   SKINSTEALER_TUNING,
   DEATHMOTH_TUNING,
+  DULLER_TUNING,
+  WRETCH_TUNING,
+  PARTYGOER_TUNING,
   type MonsterKind,
   type MonsterTuning,
 } from "@/game/ai/types";
@@ -318,6 +321,8 @@ export const FLASHLIGHT = {
  *   pipedreams — Level 2, Pipe Dreams: grimy maintenance tunnel, rusted pipes.
  *   poolrooms  — Level 3, Poolrooms: pristine white ceramic tile.
  *   hazard     — Level 4, Run For Your Life: scorched concrete, hazard tape.
+ *   hotel      — Level 5, The Terror Hotel: dark mahogany panelling, red carpet.
+ *   lightsout  — Level 6, Lights Out: riveted steel plate in near-total dark.
  * Drives which baked wall/floor/exit textures a level uses (see
  * {@link TEXTURES}).
  */
@@ -327,13 +332,15 @@ export const LEVEL_STYLES = [
   "pipedreams",
   "poolrooms",
   "hazard",
+  "hotel",
+  "lightsout",
 ] as const;
 export type LevelStyle = (typeof LEVEL_STYLES)[number];
 
 /** Which decorative layer {@link StyleColorSet} draws on top of the base wall
  *  fill — the thing that makes each level's material read distinctly. */
 export type WallPattern =
-  "wallpaper" | "concrete" | "pipes" | "tile" | "hazard";
+  "wallpaper" | "concrete" | "pipes" | "tile" | "hazard" | "panels" | "steel";
 /** Which pattern {@link StyleColorSet} draws for a level's floor. */
 export type FloorPattern = "weave" | "concrete" | "tile";
 
@@ -397,7 +404,11 @@ export type PropKind =
   | "drain"
   | "crack"
   | "sign"
-  | "scorchpile";
+  | "scorchpile"
+  | "luggage"
+  | "lamp"
+  | "fusebox"
+  | "cable";
 
 export const STYLE_PROPS: Record<LevelStyle, readonly [PropKind, PropKind]> = {
   lobby: ["chair", "boxes"],
@@ -405,6 +416,8 @@ export const STYLE_PROPS: Record<LevelStyle, readonly [PropKind, PropKind]> = {
   pipedreams: ["valve", "pipecart"],
   poolrooms: ["drain", "crack"],
   hazard: ["sign", "scorchpile"],
+  hotel: ["luggage", "lamp"],
+  lightsout: ["fusebox", "cable"],
 };
 
 /** Tuning for ambient decoration/collectible scatter — see MainScene's
@@ -566,6 +579,56 @@ export const STYLE_COLORS: Record<LevelStyle, StyleColorSet> = {
     accent2: 0x1a1410,
     monsterMood: 0xffb078,
   },
+  // Level 5 "The Terror Hotel" — an endless 1920s hotel: dark mahogany wall
+  // panelling, deep wine-red carpet, brass fittings. Wiki: perpetually night,
+  // wooden interiors, the smell of old varnish.
+  hotel: {
+    seed: 4501,
+    floor: 0x6e2430,
+    floorWeaveHi: 0x84303c,
+    floorWeaveLo: 0x521a24,
+    floorStain: 0x2e0e14,
+    wall: 0x5c3a26,
+    wallStripe: 0x4c2f1e,
+    wallStripeGap: 8,
+    wallHi: 0x7e5236,
+    wallHi2: 0x6e472e,
+    wallShade: 0x3e2718,
+    wallShade2: 0x4c2f1e,
+    wallDark: 0x24150c,
+    wallSpeckleHi: 0x8a5c3c,
+    wallSpeckleLo: 0x1e110a,
+    wallPattern: "panels",
+    floorPattern: "weave",
+    accent: 0xc9a24a,
+    accent2: 0x2a180e,
+    monsterMood: 0xe8c090,
+  },
+  // Level 6 "Lights Out" — riveted steel plate and cable runs in near-total
+  // darkness. Wiki: a pitch-black industrial complex; light sources gutter
+  // and die, and what lives here prefers it that way.
+  lightsout: {
+    seed: 5601,
+    floor: 0x23262b,
+    floorWeaveHi: 0x2e3238,
+    floorWeaveLo: 0x181a1e,
+    floorStain: 0x0b0c0e,
+    wall: 0x2e3238,
+    wallStripe: 0x24272c,
+    wallStripeGap: 10,
+    wallHi: 0x484d55,
+    wallHi2: 0x3c4148,
+    wallShade: 0x1c1f23,
+    wallShade2: 0x24272c,
+    wallDark: 0x0e1013,
+    wallSpeckleHi: 0x545a63,
+    wallSpeckleLo: 0x0a0b0d,
+    wallPattern: "steel",
+    floorPattern: "concrete",
+    accent: 0x6a7280,
+    accent2: 0x101216,
+    monsterMood: 0x9aa4b8,
+  },
 } as const;
 
 export const COLORS = {
@@ -647,10 +710,6 @@ export const TEXTURES = {
   flashlight: "tex-flashlight-item",
   loreLetter: "tex-lore-letter",
   loreBook: "tex-lore-book",
-  monster: "tex-monster",
-  monsterWalk: "tex-monster-walk",
-  monsterBack: "tex-monster-back",
-  monsterBackWalk: "tex-monster-back-walk",
   hole: "tex-hole",
   rubble: "tex-rubble",
   scanlines: "tex-scanlines",
@@ -670,6 +729,61 @@ export function playerTextureKey(
   return `tex-player-${skinId}-${facing}${stride ? "-walk" : ""}`;
 }
 
+/**
+ * The distinct sprite art a {@link MonsterKind}'s textures are drawn from —
+ * several kinds share one body of art and differ only by tint/scale (the
+ * pursuer is a hotter-tinted lurker). See `MONSTER_ART` for the mapping and
+ * PreloadScene's `makeMonsterKind` for the actual drawing.
+ */
+export type MonsterArt =
+  | "gaunt"
+  | "hound"
+  | "smiler"
+  | "faceling"
+  | "skinstealer"
+  | "deathmoth"
+  | "duller"
+  | "wretch"
+  | "partygoer";
+
+/** Which art set each kind's textures use. Every art listed here is baked
+ *  once (4 frames) at preload; kinds resolve through this so the pursuer and
+ *  lurker can share the same sprite without baking it twice. */
+export const MONSTER_ART: Record<MonsterKind, MonsterArt> = {
+  pursuer: "gaunt",
+  lurker: "gaunt",
+  hound: "hound",
+  smiler: "smiler",
+  faceling: "faceling",
+  skinstealer: "skinstealer",
+  deathmoth: "deathmoth",
+  duller: "duller",
+  wretch: "wretch",
+  partygoer: "partygoer",
+} as const;
+
+export const MONSTER_ARTS: readonly MonsterArt[] = [
+  "gaunt",
+  "hound",
+  "smiler",
+  "faceling",
+  "skinstealer",
+  "deathmoth",
+  "duller",
+  "wretch",
+  "partygoer",
+];
+
+/** Monster texture keys are generated per art set (front/back × idle/stride),
+ *  mirroring {@link playerTextureKey}'s per-skin scheme. */
+export function monsterTextureKey(
+  art: MonsterArt,
+  facing: "front" | "back",
+  stride: boolean,
+): string {
+  return `tex-monster-${art}-${facing}${stride ? "-walk" : ""}`;
+}
+
 /** Walk-cycle frame swap: how often the "stride" leg-offset frame alternates
  *  with the neutral frame while a character is moving. */
 export const WALK_CYCLE_MS = 190;
@@ -685,6 +799,9 @@ export const MONSTER_TINT = {
   faceling: 0xb8c2d6, // pale dull blue-grey — a blank mimic of a person
   skinstealer: 0xd9a892, // pale fleshy tone — faintly, unmistakably wrong
   deathmoth: 0x9a9070, // dusty ash-brown — a swarm, not a silhouette
+  duller: 0xaab2c0, // washed-out slate grey — a figure with the colour drained
+  wretch: 0xc4b8a8, // grave-pale with old bloodstains baked into the art
+  partygoer: 0xfff2a0, // party-balloon yellow — cheerful in the worst way
 } as const;
 
 /**
@@ -775,6 +892,31 @@ export const MONSTER_KIND_CONFIG: Record<MonsterKind, MonsterKindConfig> = {
     tint: MONSTER_TINT.deathmoth,
     scale: { x: 0.55, y: 0.55 },
     harmless: true,
+  },
+  // Tall, featureless, and never in a hurry — the Duller glides (no walk
+  // cycle) and follows rather than sprints; its chase never beats a walking
+  // player, so the threat is attrition, not speed.
+  duller: {
+    tuning: DULLER_TUNING,
+    tint: MONSTER_TINT.duller,
+    scale: { x: 0.92, y: 1.14 },
+    noWalkCycle: true,
+    chaseSpeedMultiplier: 0.6,
+  },
+  // A ruined, shrieking thing (wiki entity-140) — slow confused shuffling
+  // until provoked, then the fastest burst of any roster kind.
+  wretch: {
+    tuning: WRETCH_TUNING,
+    tint: MONSTER_TINT.wretch,
+    scale: { x: 1.04, y: 0.94 },
+    chaseSpeedMultiplier: 1.28,
+  },
+  // Permanently smiling and desperate for you to join the party (wiki
+  // entity-67) — sociable wandering, fast committed "hug" once it notices.
+  partygoer: {
+    tuning: PARTYGOER_TUNING,
+    tint: MONSTER_TINT.partygoer,
+    chaseSpeedMultiplier: 1.12,
   },
 } as const;
 

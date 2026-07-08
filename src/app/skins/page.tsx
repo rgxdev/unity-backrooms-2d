@@ -1,15 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { SKINS } from "@/game/skins/skinCatalog";
+import { isSkinUnlocked, SKINS } from "@/game/skins/skinCatalog";
 import { getOfficialLevel } from "@/game/levels/officialLevels";
 import { playUiClick } from "@/lib/ui-sound";
 import { useProgress } from "../levels/useProgress";
 import { useSettings } from "../settings/useSettings";
-
-function hexColor(value: number): string {
-  return `#${value.toString(16).padStart(6, "0")}`;
-}
+import { SkinPreview } from "./SkinPreview";
 
 export default function SkinsPage() {
   const { progress } = useProgress();
@@ -19,12 +16,13 @@ export default function SkinsPage() {
     <main className="page">
       <h1>Skin Selection</h1>
       <p className="hint">
-        Escape a level to unlock its reward gear. Equip a skin here and it
-        carries into every run.
+        Escape a level to unlock its reward gear. The wardrobe set — who you
+        were before you noclipped — is always available. Equip a skin here
+        and it carries into every run.
       </p>
       <div className="skin-grid">
         {SKINS.map((skin) => {
-          const unlocked = progress.unlockedSkins.includes(skin.id);
+          const unlocked = isSkinUnlocked(skin, progress.unlockedSkins);
           const equipped = settings.skinId === skin.id;
           const lockedHint =
             skin.unlockLevel !== undefined
@@ -43,11 +41,7 @@ export default function SkinsPage() {
                 update({ skinId: skin.id });
               }}
             >
-              <span
-                className="skin-card__swatch"
-                style={{ backgroundColor: hexColor(skin.palette.shirt) }}
-                aria-hidden
-              />
+              <SkinPreview skin={skin} />
               <span className="skin-card__name">
                 {skin.name}
                 {equipped && <span className="tag">equipped</span>}

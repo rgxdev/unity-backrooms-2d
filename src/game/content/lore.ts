@@ -225,6 +225,106 @@ export const LEVEL_LORE: Record<number, readonly LoreEntry[]> = {
         "direction up ahead, no way to tell which way is actually out. " +
         "Going to try left. If anyone finds th—",
     },
+    {
+      kind: "letter",
+      title: "Smeared Page",
+      body:
+        "Passed something in the smoke that used to be one of us. Torn " +
+        "jumpsuit, wrong angles, making a sound like a scream played " +
+        "backwards. It didn't see me — its eyes are gone. It heard my " +
+        "sleeve brush the wall, though. Ran until the tape changed colour.",
+    },
+  ],
+
+  // Level 5 — The Terror Hotel
+  5: [
+    {
+      kind: "book",
+      title: "M.E.G. Field Guide — Entry: The Terror Hotel",
+      body:
+        "Designation: Level 5. A pre-war grand hotel of indefinite floor " +
+        "count: mahogany panelling, red carpet, brass fittings, perpetual " +
+        "night beyond every window. Facelings in period attire staff the " +
+        "halls and ignore polite guests. The boiler sections below draw " +
+        "Deathmoths. Do not use the elevator. Do not RSVP to anything.",
+    },
+    {
+      kind: "letter",
+      title: "Hotel Stationery, Unsigned",
+      body:
+        "Room 214's door was open and the bed was made and warm. I didn't " +
+        "stay. The concierge nodded at me on the way out — no face, but it " +
+        "nodded, and I nodded back, and that courtesy is the only reason " +
+        "I'm still writing, I think. Mind your manners in here.",
+    },
+    {
+      kind: "letter",
+      title: "Party Invitation",
+      body:
+        "Heavy card stock, gold ink, smells faintly of frosting: YOU ARE " +
+        "CORDIALLY INVITED. BALLROOM B. FOREVER O'CLOCK. There's a smiley " +
+        "face where the signature should be. The music from below the " +
+        "floorboards has not stopped in six days. Do not go to Ballroom B.",
+    },
+    {
+      kind: "letter",
+      title: "Bellhop's Note",
+      body:
+        "Whatever wears yellow down there is not a costume. It hugged " +
+        "Marchetti and Marchetti didn't come back up, and the music got one " +
+        "voice louder. If you hear balloons squeaking against the ceiling " +
+        "of a room with no balloons, leave the floor entirely.",
+    },
+    {
+      kind: "book",
+      title: "Torn Guest Ledger",
+      body:
+        "Names going back decades, all in different hands, all checked in, " +
+        "none checked out. The last page is fresher than the rest: my own " +
+        "name, in handwriting I almost recognise, dated tomorrow.",
+    },
+  ],
+
+  // Level 6 — Lights Out
+  6: [
+    {
+      kind: "book",
+      title: "M.E.G. Field Guide — Entry: Lights Out",
+      body:
+        "Designation: Level 6. An unlit industrial complex — steel plate, " +
+        "cable trays, catwalks. Portable light sources function at a " +
+        "fraction of their rated output and fail entirely for minutes at a " +
+        "time. Smiler activity is the highest of any indexed level: if a " +
+        "grin hangs in the dark ahead of you, it has been watching for a " +
+        "while. Move quietly, touch the wall, and never run toward a light.",
+    },
+    {
+      kind: "letter",
+      title: "Note Written Blind",
+      body:
+        "Writing this without seeing it so forgive the lines. Torch died " +
+        "forty steps back and something started matching my footsteps, " +
+        "half a beat late, like a bad echo. When I stopped, it took one " +
+        "more step. I am going to keep walking now.",
+    },
+    {
+      kind: "letter",
+      title: "Grease-Pencil Marks",
+      body:
+        "Tall grey figure at the end of the cable run, standing where the " +
+        "dark is thickest. Doesn't chase. Follows. Every time I rest it is " +
+        "the same distance away, and I am so, so tired — which I think is " +
+        "the point. Don't sleep on this level. Don't.",
+    },
+    {
+      kind: "letter",
+      title: "Final Battery Bar",
+      body:
+        "Counted three grins tonight, all at different heights. The manual " +
+        "says don't look at them and don't run. The manual was written by " +
+        "someone with a working torch. The exit seam glows — it's the only " +
+        "honest light down here. Head for it and don't stop to make sure.",
+    },
   ],
 };
 

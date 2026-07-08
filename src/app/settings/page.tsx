@@ -138,8 +138,8 @@ export default function SettingsPage() {
           <label>Custom Sound Effects</label>
           <p className="hint">
             Replace any scare cue with your own audio file — stored only in
-            this browser, never uploaded anywhere. Leave a slot on "default"
-            to keep the built-in synthesised sound.
+            this browser, never uploaded anywhere. Leave a slot on
+            &ldquo;default&rdquo; to keep the built-in synthesised sound.
           </p>
           <div className="sound-slot-list">
             {SOUND_SLOTS.map((slot) => (

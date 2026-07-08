@@ -15,10 +15,12 @@ import {
   FLOOR_VARIANTS,
   JUMPSCARE,
   LORE_PICKUP,
+  MONSTER_ART,
   MONSTER_KIND_CONFIG,
   type MonsterKindConfig,
   MONSTER_STEALTH,
   MONSTER_TINT,
+  monsterTextureKey,
   OLDSCHOOL_FX,
   PATHFIND,
   PURSUIT_CATCH,
@@ -1121,7 +1123,7 @@ export class MainScene extends Phaser.Scene {
         waypoints,
         kindConfig.tuning,
         this.roleTint(kindConfig.tint),
-        this.monsterOptsFor(kindConfig),
+        this.monsterOptsFor(spawn.kind, kindConfig),
       );
       monster.setDepth(90);
       this.monsterKinds.set(monster, spawn.kind);
@@ -1136,11 +1138,18 @@ export class MainScene extends Phaser.Scene {
    *  glide behaviour regardless of the kind's own default (jump-scares always
    *  glide in — they shouldn't look like they walked into place). */
   private monsterOptsFor(
+    kind: MonsterKind,
     kindConfig: MonsterKindConfig,
     noWalkCycleOverride?: boolean,
-  ): { noWalkCycle?: boolean; scaleX?: number; scaleY?: number } {
+  ): {
+    noWalkCycle?: boolean;
+    scaleX?: number;
+    scaleY?: number;
+    kind: MonsterKind;
+  } {
     const noWalkCycle = noWalkCycleOverride ?? kindConfig.noWalkCycle;
     return {
+      kind,
       // exactOptionalPropertyTypes forbids assigning `undefined` to an
       // optional key directly — the key must be omitted, not set to
       // undefined — hence the conditional spreads rather than a plain object.
@@ -2240,7 +2249,7 @@ export class MainScene extends Phaser.Scene {
         [],
         DEFAULT_MONSTER_TUNING,
         this.roleTint(kindConfig.tint),
-        this.monsterOptsFor(kindConfig, true),
+        this.monsterOptsFor(kind, kindConfig, true),
       );
       monster.setDepth(90);
       monster.setAlpha(0);
@@ -2572,7 +2581,102 @@ export class MainScene extends Phaser.Scene {
         });
         break;
       }
+      case "knock": {
+        // Three deliberate raps from inside a wall — patient, not accidental.
+        const pan = Math.random() * 2 - 1;
+        this.audio.knock(pan);
+        this.cameras.main.shake(90, 0.0015);
+        break;
+      }
+      case "breath": {
+        // An exhale right at the ear, and the walls lean in for a moment.
+        const pan = Math.random() < 0.5 ? -0.7 : 0.7;
+        this.audio.breath(0.32, pan);
+        this.pulseBarrel(0.3, 340);
+        break;
+      }
+      case "shadow":
+        this.triggerShadowDart();
+        break;
+      case "lightsout":
+        this.triggerLightsOut();
+        break;
     }
+  }
+
+  /**
+   * A silhouette darts across the edge of what you can see and is gone —
+   * drawn from this level's own roster, tinted to near-black so it reads as
+   * a shape, not an encounter. Spawns on a visible floor tile a few tiles
+   * out and crosses perpendicular to your line of sight.
+   */
+  private triggerShadowDart(): void {
+    const origin = this.playerTile();
+    const isWall = (x: number, y: number) => this.isWallTile(x, y);
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Phaser.Math.FloatBetween(3, 5.5);
+      const tx = Math.round(origin.x + Math.cos(angle) * dist);
+      const ty = Math.round(origin.y + Math.sin(angle) * dist);
+      if (tx < 0 || ty < 0 || tx >= this.level.width || ty >= this.level.height) continue;
+      if (this.isWallTile(tx, ty) || this.isHoleTile(tx, ty)) continue;
+      if (!this.visibility.hasLineOfSight(origin.x, origin.y, tx, ty, isWall)) continue;
+
+      const kind = pickMonsterKind(Math.random, this.levelIndex);
+      const c = this.centreOf(tx, ty);
+      const sprite = this.add
+        .image(c.x, c.y, monsterTextureKey(MONSTER_ART[kind], "front", false))
+        .setDepth(89)
+        .setAlpha(0)
+        .setTint(0x0a0a0c);
+      const perp = angle + (Math.PI / 2) * (Math.random() < 0.5 ? -1 : 1);
+      const run = TILE_SIZE * 3.5;
+      sprite.setFlipX(Math.cos(perp) < 0);
+      this.audio.murmur(0.18);
+      this.tweens.add({
+        targets: sprite,
+        x: c.x + Math.cos(perp) * run,
+        y: c.y + Math.sin(perp) * run,
+        duration: 620,
+        ease: "Sine.In",
+        onComplete: () => sprite.destroy(),
+      });
+      this.tweens.add({
+        targets: sprite,
+        alpha: { from: 0, to: 0.55 },
+        duration: 310,
+        yoyo: true,
+      });
+      return;
+    }
+  }
+
+  /**
+   * The big sibling of the routine power-flicker: the lights die entirely
+   * for a couple of seconds, and something crosses the room while they're
+   * out — footsteps first at one side, then closer, then a breath. Nothing
+   * is actually there when the light comes back. Probably.
+   */
+  private triggerLightsOut(): void {
+    this.audio.staticBurst(0.4);
+    const cam = this.cameras.main;
+    const veil = this.add
+      .rectangle(0, 0, cam.width, cam.height, 0x000000, 0)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(1500);
+    this.tweens.add({
+      targets: veil,
+      alpha: { from: 0, to: 0.97 },
+      duration: 320,
+      yoyo: true,
+      hold: 1900,
+      onComplete: () => veil.destroy(),
+    });
+    const pan = Math.random() < 0.5 ? -0.8 : 0.8;
+    this.time.delayedCall(650, () => this.audio.footsteps(pan));
+    this.time.delayedCall(1450, () => this.audio.footsteps(pan * 0.35));
+    this.time.delayedCall(2050, () => this.audio.breath(0.3, 0));
   }
 
   /** A single-frame monster face slammed onto the screen and gone almost
@@ -2581,11 +2685,14 @@ export class MainScene extends Phaser.Scene {
    *  doubt, not the reveal. */
   private triggerSubliminalFlash(): void {
     const cam = this.cameras.main;
+    // Flash a face from this level's own roster — the thing you might
+    // actually meet here, not a generic one.
+    const flashKind = pickMonsterKind(Math.random, this.levelIndex);
     const face = this.add
       .image(
         cam.width * (0.3 + Math.random() * 0.4),
         cam.height * (0.3 + Math.random() * 0.4),
-        TEXTURES.monster,
+        monsterTextureKey(MONSTER_ART[flashKind], "front", false),
       )
       .setScrollFactor(0)
       .setDepth(970)

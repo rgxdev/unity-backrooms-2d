@@ -34,8 +34,18 @@ export interface RosterEntry {
  * kept here at a low, rare Hound weight framed as an anomalous crossover
  * (per the research file's own recommendation), never a named resident.
  *
- * Level 4 "Run For Your Life": original content, not a 1:1 wiki level — no
- * roster kind beyond the plain lurker; the pursuer alone carries the threat.
+ * Level 4 "Run For Your Life": original content, not a 1:1 wiki level — the
+ * pursuer carries the threat; the rare Wretch (entity-140, a ruined wanderer
+ * left behind by this stretch) is the one ambient body that fits its fiction.
+ *
+ * Level 5 "The Terror Hotel": wiki documents Facelings in period attire
+ * throughout the hotel and Deathmoths near the boiler sections; the Partygoer
+ * (entity-67) appears as a rare "party spillover" crossover — the hotel's
+ * ballrooms are exactly where its kind gravitates (see lore.ts framing).
+ *
+ * Level 6 "Lights Out": wiki frames it as pitch dark and Smiler territory —
+ * their glow-grins are the classic Level 6 sighting. Dullers drift here too
+ * (entity-11 favours dark, quiet levels), plus passing Hounds.
  */
 export const LEVEL_MONSTER_ROSTER: Record<number, readonly RosterEntry[]> = {
   0: [
@@ -49,15 +59,32 @@ export const LEVEL_MONSTER_ROSTER: Record<number, readonly RosterEntry[]> = {
     { kind: "skinstealer", weight: 0.15 },
   ],
   2: [
-    { kind: "lurker", weight: 0.4 },
-    { kind: "hound", weight: 0.25 },
-    { kind: "deathmoth", weight: 0.35 },
+    { kind: "lurker", weight: 0.3 },
+    { kind: "hound", weight: 0.2 },
+    { kind: "deathmoth", weight: 0.3 },
+    { kind: "duller", weight: 0.2 },
   ],
   3: [
     { kind: "lurker", weight: 0.88 },
     { kind: "hound", weight: 0.12 },
   ],
-  4: [{ kind: "lurker", weight: 1 }],
+  4: [
+    { kind: "lurker", weight: 0.8 },
+    { kind: "wretch", weight: 0.2 },
+  ],
+  5: [
+    { kind: "lurker", weight: 0.25 },
+    { kind: "faceling", weight: 0.3 },
+    { kind: "partygoer", weight: 0.2 },
+    { kind: "deathmoth", weight: 0.1 },
+    { kind: "wretch", weight: 0.15 },
+  ],
+  6: [
+    { kind: "lurker", weight: 0.25 },
+    { kind: "smiler", weight: 0.35 },
+    { kind: "duller", weight: 0.25 },
+    { kind: "hound", weight: 0.15 },
+  ],
 };
 
 /** Roll a non-pursuer monster kind for the given level index. Falls back to

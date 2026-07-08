@@ -346,6 +346,30 @@ export class AudioManager {
     osc.stop(ctx.currentTime + 0.55);
   }
 
+  /** Three deliberate, evenly-spaced raps from inside a wall — too regular
+   *  to be settling pipes, too patient to be an accident. `pan` (-1..1)
+   *  places which side of you the wall is on. */
+  knock(pan = 0): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    for (let i = 0; i < 3; i++) {
+      const t = ctx.currentTime + i * 0.42;
+      const gain = ctx.createGain();
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(190, t);
+      osc.frequency.exponentialRampToValueAtTime(80, t + 0.12);
+      const peak = Math.max(0.0001, 0.34 * this.masterVolume);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(peak, t + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      osc.connect(gain);
+      this.connectOut(gain, ctx, pan);
+      osc.start(t);
+      osc.stop(t + 0.2);
+    }
+  }
+
   /** Bright ascending three-note chime — reward feedback for a skin unlock,
    *  distinct from {@link chime}'s two-note Almond Water pickup jingle. */
   skinUnlockChime(): void {

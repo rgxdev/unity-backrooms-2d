@@ -221,6 +221,19 @@ a {
   border: 2px solid var(--border);
 }
 
+/* Live sprite preview — the actual player sprite, walking in place, scaled
+   up with hard pixel edges. Locked cards show it as a black cutout. */
+.skin-card__preview {
+  width: 72px;
+  height: 72px;
+  image-rendering: pixelated;
+  align-self: center;
+}
+
+.skin-card--locked .skin-card__preview {
+  filter: brightness(0.18) contrast(1.2);
+}
+
 .skin-card__name {
   letter-spacing: 0.1rem;
   text-transform: uppercase;

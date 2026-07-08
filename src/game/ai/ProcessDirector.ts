@@ -7,7 +7,11 @@
  * testable in isolation, same as `MonsterDirector`.
  *
  * Duplicated entries weight the roll — flicker/whisper/thud/footsteps stay
- * the common beat, scream/static/laugh/moan/bang are rarer jolts.
+ * the common beat; scream/static/laugh/moan/bang/flash/howl are rarer jolts;
+ * knock (three deliberate raps from inside a wall), breath (an exhale right
+ * at your ear), shadow (a silhouette darting across the fog rim) and
+ * lightsout (a long total-darkness wave with footsteps closing in) are the
+ * rarest, biggest beats.
  */
 export const ANOMALY_TYPES = [
   "flicker",
@@ -25,6 +29,12 @@ export const ANOMALY_TYPES = [
   "bang",
   "flash",
   "howl",
+  "knock",
+  "knock",
+  "breath",
+  "shadow",
+  "shadow",
+  "lightsout",
 ] as const;
 export type AnomalyType = (typeof ANOMALY_TYPES)[number];
 

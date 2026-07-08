@@ -4,6 +4,8 @@ import {
   FLOOR_VARIANTS,
   LEVEL_STYLES,
   MONSTER,
+  MONSTER_ARTS,
+  monsterTextureKey,
   PLAYER,
   playerTextureKey,
   SCENES,
@@ -14,6 +16,7 @@ import {
   WALL_MASK,
   WALL_MASK_COUNT,
   WALL_VARIANTS,
+  type MonsterArt,
   type PropKind,
   type StyleColorSet,
 } from "@/game/config/constants";
@@ -22,13 +25,41 @@ import {
   type AccessoryKind,
   type PlayerPalette,
 } from "@/game/skins/skinCatalog";
+import {
+  paintPlayerSprite,
+  type PaintSurface,
+} from "@/game/skins/spritePainter";
 import { hash01 } from "@/game/util/hash";
 
 type Facing = "front" | "back";
 
+/** Palette for the per-art monster sprites that don't reuse the gaunt
+ *  lurker's body colours — kept local: nothing outside texture baking needs
+ *  them (runtime identity colouring stays MONSTER_TINT's job). */
+const MART = {
+  smilerGrin: 0xf6f2e4,
+  smilerEye: 0xe8e2c8,
+  facelingSuit: 0x3a3f4a,
+  facelingSuitHi: 0x4c5260,
+  stitch: 0x6b4034,
+  fleshSeam: 0xb08472,
+  mothWing: 0xb8ac88,
+  mothWingSpot: 0x4a4232,
+  mothBody: 0x776b4e,
+  wretchBlood: 0x5c1a12,
+  wretchRag: 0x6b6152,
+  partyBody: 0xf2e28a,
+  partyBodyHi: 0xfcf2b0,
+  partyShade: 0xc2ae5a,
+  partyMouth: 0x2a1c10,
+  partyHat: 0xd06a9a,
+} as const;
+
 /** Texture generations processed per frame — paces the loading process into
- *  a visible bar instead of one blocking synchronous burst. */
-const BATCH_SIZE = 2;
+ *  a visible bar instead of one blocking synchronous burst. Raised from 2
+ *  when the queue grew (7 level styles, 13 skins, 9 monster art sets) so the
+ *  total load stays around a second at 60fps. */
+const BATCH_SIZE = 6;
 
 export class PreloadScene extends Phaser.Scene {
   private queue: Array<() => void> = [];
@@ -152,11 +183,15 @@ export class PreloadScene extends Phaser.Scene {
           ),
       );
     }
+    for (const art of MONSTER_ARTS) {
+      tasks.push(
+        () => this.makeMonsterArt(monsterTextureKey(art, "front", false), art, "front", false),
+        () => this.makeMonsterArt(monsterTextureKey(art, "front", true), art, "front", true),
+        () => this.makeMonsterArt(monsterTextureKey(art, "back", false), art, "back", false),
+        () => this.makeMonsterArt(monsterTextureKey(art, "back", true), art, "back", true),
+      );
+    }
     tasks.push(
-      () => this.makeMonster(TEXTURES.monster, "front", false),
-      () => this.makeMonster(TEXTURES.monsterWalk, "front", true),
-      () => this.makeMonster(TEXTURES.monsterBack, "back", false),
-      () => this.makeMonster(TEXTURES.monsterBackWalk, "back", true),
       () => this.makeHole(TEXTURES.hole),
       () => this.makeRubble(TEXTURES.rubble),
       () => this.makeScanlines(TEXTURES.scanlines),
@@ -340,6 +375,37 @@ export class PreloadScene extends Phaser.Scene {
           }
         }
         break;
+      case "panels":
+        // Hotel wainscoting: tall mahogany panels with routed borders, a
+        // brass picture rail near the top and a dark baseboard band.
+        this.px(g, c.accent, 0, 3, t, 1, 0.5);
+        for (let x = 0; x <= t; x += 16) {
+          this.px(g, c.wallDark, x, 5, 1, t - 10, 0.6);
+          this.px(g, c.wallHi2, x + 1, 5, 1, t - 10, 0.4);
+        }
+        for (let x = 3; x < t; x += 16) {
+          this.px(g, c.wallShade, x, 8, 11, 1, 0.5);
+          this.px(g, c.wallShade, x, t - 9, 11, 1, 0.5);
+          this.px(g, c.wallShade, x, 8, 1, t - 17, 0.5);
+          this.px(g, c.wallShade, x + 10, 8, 1, t - 17, 0.5);
+        }
+        this.px(g, c.wallDark, 0, t - 4, t, 4, 0.55);
+        break;
+      case "steel":
+        // Riveted steel plate: broad panels seamed with rivet lines, and a
+        // cable tray running across the upper section.
+        for (const sy of [0, 16]) {
+          this.px(g, c.wallDark, 0, sy, t, 1, 0.7);
+          for (let x = 2; x < t; x += 6) {
+            this.px(g, c.wallHi, x, sy + 2, 1, 1, 0.7);
+            this.px(g, c.wallDark, x, sy + 13, 1, 1, 0.5);
+          }
+        }
+        // Cable tray band with two sagging cable runs.
+        this.px(g, c.wallDark, 0, 6, t, 4, 0.8);
+        this.px(g, c.accent, 0, 7, t, 1, 0.8);
+        this.px(g, c.accent2, 0, 9, t, 1, 0.9);
+        break;
     }
 
     // Speckle grain — variant 1+ is noticeably filthier.
@@ -417,6 +483,31 @@ export class PreloadScene extends Phaser.Scene {
         g.fillEllipse(t / 2, t - 14, 14, 10);
         g.fillStyle(c.accent2, 0.4);
         g.fillEllipse(t / 2, t - 10, 9, 7);
+        break;
+      }
+      case "panels": {
+        // Four parallel gouges raked down through the varnish — something
+        // with claws wanted out of this hallway.
+        for (let i = 0; i < 4; i++) {
+          const x = 10 + i * 4;
+          this.px(g, c.wallDark, x, 8, 1, 14, 0.75);
+          this.px(g, c.wallHi2, x + 1, 8, 1, 14, 0.3);
+        }
+        // A pale rectangle where a portrait hung until recently.
+        this.px(g, c.wallHi, 20, 10, 8, 10, 0.25);
+        this.px(g, c.wallDark, 20, 10, 8, 1, 0.4);
+        break;
+      }
+      case "steel": {
+        // A dented plate bulging outward, paint cracked around the impact —
+        // struck hard, from the other side.
+        g.fillStyle(c.wallHi, 0.3);
+        g.fillEllipse(16, 22, 12, 9);
+        g.fillStyle(c.wallDark, 0.6);
+        g.fillEllipse(16, 22, 7, 5);
+        this.px(g, c.wallDark, 10, 18, 3, 1, 0.6);
+        this.px(g, c.wallDark, 20, 26, 4, 1, 0.6);
+        this.px(g, c.wallDark, 22, 18, 2, 1, 0.5);
         break;
       }
     }
@@ -536,6 +627,7 @@ export class PreloadScene extends Phaser.Scene {
   private static readonly FLUSH_PROPS: ReadonlySet<PropKind> = new Set([
     "drain",
     "crack",
+    "cable",
   ]);
 
   /**
@@ -665,6 +757,56 @@ export class PreloadScene extends Phaser.Scene {
         this.px(g, c.accent, 12, 22, 1, 1, 0.7);
         break;
       }
+      case "luggage": {
+        // An abandoned steamer trunk, straps still buckled — its owner
+        // checked in and never out.
+        this.rr(g, COLORS.propWood, 7, 12, 18, 13, 1);
+        this.px(g, COLORS.propWoodDark, 7, 17, 18, 1, 0.8);
+        this.px(g, c.accent, 11, 12, 2, 13, 0.9);
+        this.px(g, c.accent, 19, 12, 2, 13, 0.9);
+        this.px(g, c.accent, 15, 16, 3, 3, 1);
+        this.px(g, COLORS.propWoodDark, 7, 12, 18, 1, 0.6);
+        break;
+      }
+      case "lamp": {
+        // A toppled floor lamp, shade down, bulb long dead.
+        this.px(g, COLORS.propMetalDark, 8, 20, 14, 2, 1);
+        g.fillStyle(COLORS.propMetalDark, 1);
+        g.fillEllipse(9, 21, 4, 4);
+        g.fillStyle(c.accent, 0.9);
+        g.fillTriangle(21, 15, 28, 19, 22, 26);
+        this.px(g, COLORS.propSignDark, 23, 19, 3, 2, 0.6);
+        break;
+      }
+      case "fusebox": {
+        // A floor-mounted breaker cabinet, door ajar, one dead indicator.
+        this.rr(g, COLORS.propMetal, 9, 8, 14, 18, 1);
+        this.px(g, COLORS.propMetalDark, 9, 8, 14, 2, 0.8);
+        this.px(g, COLORS.propMetalDark, 15, 10, 1, 16, 0.7);
+        for (let i = 0; i < 4; i++) {
+          this.px(g, COLORS.propMetalDark, 17, 11 + i * 3, 4, 2, 0.9);
+        }
+        this.px(g, c.accent, 11, 11, 2, 2, 0.8);
+        this.px(g, COLORS.propSignDark, 11, 15, 2, 2, 0.9);
+        break;
+      }
+      case "cable": {
+        // A flush spill of severed cable runs snaking across the plate floor.
+        const runs: Array<[number, number, number, number]> = [
+          [4, 12, 26, 3],
+          [8, 18, 22, -2],
+          [6, 24, 24, 4],
+        ];
+        for (const [x0, y0, len, drift] of runs) {
+          for (let i = 0; i < len; i++) {
+            const y = Math.round(y0 + (drift * i) / len);
+            this.px(g, COLORS.propMetalDark, x0 + i, y, 1, 2, 0.9);
+          }
+        }
+        this.px(g, c.accent, 28, 14, 2, 2, 0.8);
+        this.px(g, c.accent, 4, 27, 2, 2, 0.7);
+        break;
+      }
     }
 
     g.generateTexture(key, t, t);
@@ -777,15 +919,23 @@ export class PreloadScene extends Phaser.Scene {
     g.destroy();
   }
 
-  /**
-   * Top-down character sprite: rounded silhouette, hair, shaded shirt/legs
-   * with soft multi-tone shading and a dark keyline — a readable little
-   * person with a gentle rounded shape instead of a two-tone square.
-   * `facing` swaps the face (front) for a full head of hair and a spine
-   * seam (back), so walking away from the camera reads differently to
-   * walking toward it. `stride` offsets the legs into a mid-step pose for
-   * the second walk-cycle frame.
-   */
+  /** Adapts a Phaser Graphics into the engine-agnostic {@link PaintSurface}
+   *  the shared player sprite painter draws onto — the same painter the
+   *  skin-selector's DOM-canvas preview uses, so they can never drift. */
+  private paintSurfaceFor(g: Phaser.GameObjects.Graphics): PaintSurface {
+    return {
+      px: (color, x, y, w = 1, h = 1, alpha = 1) =>
+        this.px(g, color, x, y, w, h, alpha),
+      rr: (color, x, y, w, h, alpha = 1) => this.rr(g, color, x, y, w, h, alpha),
+      ellipse: (color, cx, cy, w, h, alpha = 1) => {
+        g.fillStyle(color, alpha);
+        g.fillEllipse(cx, cy, w, h);
+      },
+    };
+  }
+
+  /** Bakes one player-skin frame from the shared sprite painter (see
+   *  `game/skins/spritePainter.ts` for the actual drawing). */
   private makePlayer(
     key: string,
     facing: Facing,
@@ -795,118 +945,78 @@ export class PreloadScene extends Phaser.Scene {
   ): void {
     const s = PLAYER.size;
     const g = this.make.graphics({ x: 0, y: 0 }, false);
+    paintPlayerSprite(this.paintSurfaceFor(g), facing, stride, palette, accessory);
+    g.generateTexture(key, s, s);
+    g.destroy();
+  }
 
-    // Rounded keyline silhouette.
-    this.rr(g, COLORS.playerOutline, 2, 0, s - 4, s, 1);
-    this.rr(g, COLORS.playerOutline, 1, 2, s - 2, s - 3, 1);
+  /**
+   * One baked frame of a monster art set (see {@link MonsterArt}): every
+   * distinct entity gets its own hand-drawn silhouette instead of one shared
+   * sprite recoloured per kind. `facing`/`stride` mirror the player's
+   * front/back × idle/walk frame scheme.
+   */
+  private makeMonsterArt(
+    key: string,
+    art: MonsterArt,
+    facing: Facing,
+    stride: boolean,
+  ): void {
+    const s = MONSTER.size;
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
 
-    // Soft drop shadow, grounding the sprite on the floor beneath it.
-    g.fillStyle(COLORS.shadow, 0.28);
-    g.fillEllipse(s / 2, s - 1, s - 4, 3);
+    // Contact shadow, grounding it against the floor — shared by every art.
+    g.fillStyle(COLORS.shadow, 0.35);
+    g.fillEllipse(s / 2, s - 1, s - 10, 4);
 
-    // Hair cap, rounded.
-    this.rr(g, palette.hair, 3, 1, s - 6, 5, 1);
-    this.px(g, palette.hairHi, 4, 1, s - 8, 1, 0.8);
-
-    if (facing === "front") {
-      // Face with a shaded right cheek — soft two-tone blend.
-      this.rr(g, palette.skin, 3, 5, s - 6, 4, 1);
-      this.px(g, palette.skinShade, s - 6, 6, 2, 3, 0.8);
-      // Eyes.
-      this.px(g, COLORS.playerOutline, 5, 7, 1, 1);
-      this.px(g, COLORS.playerOutline, s - 6, 7, 1, 1);
-    } else {
-      // Back of the head: hair covers where the face would be, plus a
-      // centre parting seam.
-      this.rr(g, palette.hair, 3, 5, s - 6, 4, 1);
-      this.px(g, COLORS.playerOutline, s / 2 - 0.5, 5, 1, 4, 0.5);
+    switch (art) {
+      case "gaunt":
+        this.drawGaunt(g, s, facing, stride);
+        break;
+      case "hound":
+        this.drawHound(g, s, facing, stride);
+        break;
+      case "smiler":
+        this.drawSmiler(g, s, facing, stride);
+        break;
+      case "faceling":
+        this.drawFaceling(g, s, facing, stride);
+        break;
+      case "skinstealer":
+        this.drawSkinStealer(g, s, facing, stride);
+        break;
+      case "deathmoth":
+        this.drawDeathmoth(g, s, facing, stride);
+        break;
+      case "duller":
+        this.drawDuller(g, s, facing, stride);
+        break;
+      case "wretch":
+        this.drawWretch(g, s, facing, stride);
+        break;
+      case "partygoer":
+        this.drawPartygoer(g, s, facing, stride);
+        break;
     }
-
-    this.drawAccessory(g, s, facing, palette, accessory);
-
-    // Shirt torso + arms, shaded on the right, highlighted on the left.
-    this.rr(g, palette.shirt, 2, 9, s - 4, 5, 1);
-    this.px(g, palette.shirtHi, 3, 9, 2, 4, 0.6);
-    this.px(g, palette.shirtShade, s - 5, 9, 3, 5, 0.85);
-    this.px(g, palette.skin, 2, 10, 1, 2);
-    this.px(g, palette.skin, s - 3, 10, 1, 2);
-    if (facing === "back") {
-      // Spine seam down the back of the shirt.
-      this.px(g, palette.shirtShade, s / 2 - 0.5, 9, 1, 5, 0.6);
-    }
-
-    // Legs, split left/right so a stride frame can offset them into a
-    // mid-step pose (one leg forward/up, one back/down).
-    const legW = (s - 6) / 2;
-    const shift = stride ? 1 : 0;
-    this.rr(g, palette.pants, 3, 14 - shift, legW, 4, 1);
-    this.rr(g, palette.pants, 3 + legW, 14 + shift, legW, 4, 1);
-    this.px(g, palette.pantsShade, s - 5, 15 + shift, 2, 3, 0.7);
-    this.px(g, COLORS.playerOutline, s / 2 - 0.5, 14, 1, 4, 0.7);
 
     g.generateTexture(key, s, s);
     g.destroy();
   }
 
   /**
-   * Skin-specific silhouette add-on drawn over the head/face, in the
-   * gear's own shade — so each skin is unmistakably its own texture at a
-   * glance, not just a shirt-colour swap on an otherwise identical sprite.
-   * Face-level accessories (goggles/mask/bandana) only apply facing the
-   * camera; the back of the head has no face for them to sit on.
+   * The gaunt lurker (also worn by the pursuer, hotter-tinted): a pale thing
+   * with an oversized bald skull, huge black eye-sockets and a wide jagged
+   * grin, on a scrawny ribbed torso with long spindly arms hanging past its
+   * knees. `facing` swaps the face (front) for a faceless bald dome with a
+   * spine ridge (back); `stride` offsets its arms/legs into a lurching
+   * mid-step pose.
    */
-  private drawAccessory(
+  private drawGaunt(
     g: Phaser.GameObjects.Graphics,
     s: number,
     facing: Facing,
-    palette: PlayerPalette,
-    accessory: AccessoryKind,
+    stride: boolean,
   ): void {
-    switch (accessory) {
-      case "none":
-        return;
-      case "cap":
-        // Flat brim across the forehead, over the hair.
-        this.px(g, palette.shirtShade, 3, 2, s - 6, 1, 1);
-        this.px(g, palette.shirtShade, 2, 3, s - 4, 1, 0.9);
-        return;
-      case "hood":
-        // Fabric framing the hair down both sides and across the top.
-        this.px(g, palette.shirtShade, 2, 1, 1, 6, 0.9);
-        this.px(g, palette.shirtShade, s - 3, 1, 1, 6, 0.9);
-        this.px(g, palette.shirtShade, 3, 0, s - 6, 1, 0.9);
-        return;
-      case "goggles":
-        if (facing !== "front") return;
-        this.px(g, palette.shirtHi, 4, 6, s - 8, 2, 0.9);
-        return;
-      case "mask":
-        if (facing !== "front") return;
-        this.px(g, palette.shirtShade, 4, 7, s - 8, 3, 0.9);
-        return;
-      case "bandana":
-        if (facing !== "front") return;
-        this.px(g, palette.shirtShade, 4, 8, s - 8, 2, 0.95);
-        return;
-    }
-  }
-
-  /**
-   * Lurking monster sprite: a gaunt, pale-skinned thing with an oversized
-   * bald skull, huge black eye-sockets and a wide jagged grin, on a scrawny
-   * ribbed torso with long spindly arms hanging past its knees — reads as
-   * unmistakably wrong at a glance. `facing` swaps the face (front) for a
-   * faceless bald dome with a spine ridge (back) — worse to see chasing away
-   * from you than toward you. `stride` offsets its arms/legs into a lurching
-   * mid-step pose for the second walk-cycle frame.
-   */
-  private makeMonster(key: string, facing: Facing, stride: boolean): void {
-    const s = MONSTER.size;
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
-
-    // Contact shadow, grounding it against the floor.
-    g.fillStyle(COLORS.shadow, 0.35);
-    g.fillEllipse(s / 2, s - 1, s - 10, 4);
 
     // Long, two-jointed arms hanging well past the knees, bent outward at
     // the elbow — offset opposite ways for the stride frame so the lurch
@@ -980,9 +1090,446 @@ export class PreloadScene extends Phaser.Scene {
     // Small feet.
     this.px(g, COLORS.monsterBodyShade, 14, 37 - limbShift, 6, 2, 0.6);
     this.px(g, COLORS.monsterBodyShade, 20, 37 + limbShift, 6, 2, 0.6);
+  }
 
-    g.generateTexture(key, s, s);
-    g.destroy();
+  /**
+   * The Hound: a head-on hunting quadruped — broad low skull between hunched
+   * shoulder blades, glowing eyes, bared teeth, four legs planted wide. Back
+   * view swaps the face for haunches and a whip of tail.
+   */
+  private drawHound(
+    g: Phaser.GameObjects.Graphics,
+    _s: number,
+    facing: Facing,
+    stride: boolean,
+  ): void {
+    const shift = stride ? 1 : 0;
+
+    // Shoulder mass — hunched higher than the skull, wolf-like.
+    this.rr(g, COLORS.playerOutline, 5, 10, 30, 18, 1);
+    this.rr(g, COLORS.monsterLimb, 6, 11, 28, 16, 1);
+    this.px(g, COLORS.monsterBodyHi, 8, 11, 4, 3, 0.4);
+    this.px(g, COLORS.monsterBodyShade, 7, 22, 26, 4, 0.5);
+
+    if (facing === "front") {
+      // Low-slung skull pushed forward beneath the shoulder line.
+      this.rr(g, COLORS.playerOutline, 11, 14, 18, 13, 1);
+      this.rr(g, COLORS.monsterBody, 12, 15, 16, 11, 1);
+      // Pinned-back ears.
+      g.fillStyle(COLORS.monsterBody, 1);
+      g.fillTriangle(10, 15, 14, 10, 16, 15);
+      g.fillTriangle(24, 15, 26, 10, 30, 15);
+      // Glowing narrowed eyes.
+      this.px(g, COLORS.monsterMaw, 14, 18, 3, 2, 0.95);
+      this.px(g, COLORS.monsterMaw, 23, 18, 3, 2, 0.95);
+      this.px(g, COLORS.monsterEye, 15, 18, 1, 2, 1);
+      this.px(g, COLORS.monsterEye, 24, 18, 1, 2, 1);
+      // Muzzle and bared interlocking teeth.
+      this.px(g, COLORS.monsterBodyShade, 16, 21, 8, 5, 1);
+      this.px(g, COLORS.monsterMawShade, 15, 23, 10, 3, 1);
+      for (let i = 0; i < 4; i++) {
+        this.px(g, COLORS.monsterMaw, 15 + i * 3, 23, 1, 2);
+      }
+    } else {
+      // Rear view: haunches, spine ridge, and a low whip of tail.
+      this.px(g, COLORS.monsterBodyShade, 19, 11, 2, 16, 0.7);
+      for (let i = 0; i < 4; i++) {
+        this.px(g, COLORS.monsterBodyShade, 18, 12 + i * 4, 4, 2, 0.6);
+      }
+      this.px(g, COLORS.monsterLimb, 18 + shift * 2, 26, 2, 8, 1);
+      this.px(g, COLORS.monsterLimb, 19 + shift * 2, 33, 4, 2, 0.9);
+    }
+
+    // Four planted legs, opposite pairs offset for the stride frame.
+    this.px(g, COLORS.monsterLimb, 7, 27 - shift, 4, 11, 1);
+    this.px(g, COLORS.monsterLimb, 29, 27 + shift, 4, 11, 1);
+    this.px(g, COLORS.monsterLimb, 13, 29 + shift, 4, 9, 1);
+    this.px(g, COLORS.monsterLimb, 23, 29 - shift, 4, 9, 1);
+    // Claws.
+    this.px(g, COLORS.monsterBodyShade, 7, 37 - shift, 4, 2, 0.8);
+    this.px(g, COLORS.monsterBodyShade, 29, 37 + shift, 4, 2, 0.8);
+  }
+
+  /**
+   * The Smiler: barely a body at all — a smear of dark that the fog reads as
+   * shadow, under two glowing eyes and the huge luminous grin that IS the
+   * entity. The back view is almost nothing: the grin's glow faintly leaking
+   * around a black silhouette, which is exactly why you check twice.
+   */
+  private drawSmiler(
+    g: Phaser.GameObjects.Graphics,
+    s: number,
+    facing: Facing,
+    stride: boolean,
+  ): void {
+    const sway = stride ? 1 : 0;
+
+    // The dark mass — layered soft blobs, no hard silhouette.
+    g.fillStyle(COLORS.monsterEye, 0.55);
+    g.fillEllipse(s / 2, 22, 24, 30);
+    g.fillStyle(COLORS.monsterEye, 0.75);
+    g.fillEllipse(s / 2, 18 + sway, 18, 22);
+
+    if (facing === "front") {
+      // Wide upturned crescent grin — rows of too-many teeth.
+      this.px(g, MART.smilerGrin, 9, 20 + sway, 22, 3, 0.95);
+      this.px(g, MART.smilerGrin, 7, 18 + sway, 3, 3, 0.85);
+      this.px(g, MART.smilerGrin, 30, 18 + sway, 3, 3, 0.85);
+      // Tooth separations.
+      for (let i = 0; i < 7; i++) {
+        this.px(g, COLORS.monsterEye, 10 + i * 3, 20 + sway, 1, 3, 0.8);
+      }
+      // Glowing lidless eyes, set wide and high.
+      g.fillStyle(MART.smilerEye, 0.95);
+      g.fillEllipse(13, 10 + sway, 6, 5);
+      g.fillEllipse(27, 10 + sway, 6, 5);
+      g.fillStyle(COLORS.monsterEye, 1);
+      g.fillEllipse(13, 10 + sway, 2, 2);
+      g.fillEllipse(27, 10 + sway, 2, 2);
+    } else {
+      // From behind: only the grin-glow bleeding around the dark.
+      this.px(g, MART.smilerGrin, 8, 19 + sway, 2, 2, 0.35);
+      this.px(g, MART.smilerGrin, 30, 19 + sway, 2, 2, 0.35);
+      this.px(g, MART.smilerEye, 10, 9 + sway, 2, 2, 0.3);
+      this.px(g, MART.smilerEye, 28, 9 + sway, 2, 2, 0.3);
+    }
+  }
+
+  /**
+   * The Faceling: the most person-shaped thing in here — neat dark suit,
+   * upright posture, hands folded at its sides — with a smooth featureless
+   * blank where a face should be. The wrongness is the politeness.
+   */
+  private drawFaceling(
+    g: Phaser.GameObjects.Graphics,
+    s: number,
+    facing: Facing,
+    stride: boolean,
+  ): void {
+    const shift = stride ? 1 : 0;
+
+    // Head: a smooth pale oval, outlined.
+    g.fillStyle(COLORS.playerOutline, 1);
+    g.fillEllipse(s / 2, 9, 16, 15);
+    g.fillStyle(COLORS.monsterBody, 1);
+    g.fillEllipse(s / 2, 9, 14, 13);
+    this.px(g, COLORS.monsterBodyHi, 15, 4, 4, 3, 0.4);
+    if (facing === "front") {
+      // No features at all — just a faint shading where eyes would sit.
+      this.px(g, COLORS.monsterBodyShade, 14, 8, 12, 1, 0.25);
+    } else {
+      // The back of the head is identical to the front. That's the point.
+      this.px(g, COLORS.monsterBodyShade, 14, 9, 12, 1, 0.18);
+    }
+
+    // Suit torso: narrow shoulders, straight lines, a shirt-collar V.
+    this.rr(g, COLORS.playerOutline, 11, 15, 18, 15, 1);
+    this.rr(g, MART.facelingSuit, 12, 16, 16, 13, 1);
+    this.px(g, MART.facelingSuitHi, 13, 16, 2, 12, 0.5);
+    if (facing === "front") {
+      g.fillStyle(COLORS.monsterBody, 1);
+      g.fillTriangle(18, 16, 22, 16, 20, 21);
+      this.px(g, MART.facelingSuit, 19.5, 17, 1, 4, 1);
+    } else {
+      this.px(g, COLORS.playerOutline, 19.5, 16, 1, 13, 0.5);
+    }
+    // Arms held unnaturally straight at the sides, pale hands.
+    this.px(g, MART.facelingSuit, 9, 17, 3, 12 - shift, 1);
+    this.px(g, MART.facelingSuit, 28, 17, 3, 12 + shift, 1);
+    this.px(g, COLORS.monsterBody, 9, 28 - shift, 3, 3, 1);
+    this.px(g, COLORS.monsterBody, 28, 28 + shift, 3, 3, 1);
+
+    // Pressed suit trousers, small neat steps.
+    this.rr(g, COLORS.playerOutline, 13, 29, 14, 11, 1);
+    this.rr(g, MART.facelingSuit, 14, 30 - shift, 5, 9, 1);
+    this.rr(g, MART.facelingSuit, 21, 30 + shift, 5, 9, 1);
+    this.px(g, COLORS.playerOutline, 14, 38 - shift, 5, 2, 0.8);
+    this.px(g, COLORS.playerOutline, 21, 38 + shift, 5, 2, 0.8);
+  }
+
+  /**
+   * The Skin-Stealer: wearing a person that doesn't fit — fleshy hide
+   * crossed by dark stitch seams, a too-long neck, and small sunken eyes
+   * that sit at the wrong depth. Back view: one long seam down the spine,
+   * laced shut.
+   */
+  private drawSkinStealer(
+    g: Phaser.GameObjects.Graphics,
+    s: number,
+    facing: Facing,
+    stride: boolean,
+  ): void {
+    const shift = stride ? 1 : 0;
+
+    // Too-long neck first, so the head overlaps it.
+    this.px(g, COLORS.monsterBody, 17, 12, 6, 7, 1);
+    this.px(g, MART.fleshSeam, 18, 13, 1, 5, 0.6);
+
+    // Head: slightly deflated oval — a mask more than a skull.
+    g.fillStyle(COLORS.playerOutline, 1);
+    g.fillEllipse(s / 2, 8, 17, 14);
+    g.fillStyle(COLORS.monsterBody, 1);
+    g.fillEllipse(s / 2, 8, 15, 12);
+    if (facing === "front") {
+      // Sunken pinprick eyes, set too close; a stitched-flat mouth.
+      this.px(g, COLORS.monsterEye, 16, 7, 2, 2, 1);
+      this.px(g, COLORS.monsterEye, 22, 7, 2, 2, 1);
+      this.px(g, COLORS.monsterBodyShade, 15, 6, 4, 1, 0.5);
+      this.px(g, COLORS.monsterBodyShade, 21, 6, 4, 1, 0.5);
+      this.px(g, MART.stitch, 15, 11, 10, 1, 0.9);
+      for (let i = 0; i < 5; i++) {
+        this.px(g, MART.stitch, 15 + i * 2, 10, 1, 3, 0.5);
+      }
+      // A seam across the brow where the face was pulled on.
+      this.px(g, MART.fleshSeam, 13, 4, 14, 1, 0.7);
+    } else {
+      // Laced spine seam from crown to collar.
+      this.px(g, MART.stitch, 19.5, 3, 1, 11, 0.9);
+      for (let i = 0; i < 4; i++) {
+        this.px(g, MART.stitch, 18, 4 + i * 3, 4, 1, 0.6);
+      }
+    }
+
+    // Torso: loose hide with visible seams, slightly baggy at the waist.
+    this.rr(g, COLORS.playerOutline, 12, 17, 16, 14, 1);
+    this.rr(g, COLORS.monsterBody, 13, 18, 14, 12, 1);
+    this.px(g, COLORS.monsterBodyHi, 13, 18, 2, 12, 0.35);
+    if (facing === "front") {
+      this.px(g, MART.fleshSeam, 16, 19, 1, 10, 0.7);
+      this.px(g, MART.fleshSeam, 24, 20, 1, 9, 0.6);
+      this.px(g, MART.stitch, 15, 23, 10, 1, 0.7);
+    } else {
+      this.px(g, MART.stitch, 19.5, 18, 1, 12, 0.9);
+      for (let i = 0; i < 4; i++) {
+        this.px(g, MART.stitch, 18, 19 + i * 3, 4, 1, 0.6);
+      }
+    }
+    // Arms — a little too long, wrists past the hips.
+    this.px(g, COLORS.monsterLimb, 9, 18 - shift, 3, 14, 1);
+    this.px(g, COLORS.monsterLimb, 28, 18 + shift, 3, 14, 1);
+    this.px(g, COLORS.monsterBodyShade, 9, 31 - shift, 3, 3, 0.9);
+    this.px(g, COLORS.monsterBodyShade, 28, 31 + shift, 3, 3, 0.9);
+
+    // Legs, hide sagging over the knees.
+    this.rr(g, COLORS.playerOutline, 13, 30, 14, 10, 1);
+    this.rr(g, COLORS.monsterBody, 14, 31 - shift, 5, 8, 1);
+    this.rr(g, COLORS.monsterBody, 21, 31 + shift, 5, 8, 1);
+    this.px(g, MART.fleshSeam, 16, 33 - shift, 1, 5, 0.5);
+    this.px(g, MART.fleshSeam, 23, 33 + shift, 1, 5, 0.5);
+  }
+
+  /**
+   * The Deathmoth: a fat furred thorax between two broad patterned wings —
+   * drawn wings-spread from above, since it flutters rather than walks. The
+   * stride frame beats the wings inward for a cheap two-frame flap.
+   */
+  private drawDeathmoth(
+    g: Phaser.GameObjects.Graphics,
+    s: number,
+    facing: Facing,
+    stride: boolean,
+  ): void {
+    // Wing beat: idle = fully spread, stride = pulled in and up.
+    const spread = stride ? 3 : 0;
+
+    // Wings — big soft triangles with dark eye-spots.
+    g.fillStyle(MART.mothWing, 0.95);
+    g.fillTriangle(2 + spread, 10, 18, 16, 8 + spread, 30);
+    g.fillTriangle(38 - spread, 10, 22, 16, 32 - spread, 30);
+    g.fillStyle(MART.mothWingSpot, 0.8);
+    g.fillEllipse(10 + spread, 17, 5, 4);
+    g.fillEllipse(30 - spread, 17, 5, 4);
+    g.fillStyle(MART.mothWing, 0.6);
+    g.fillTriangle(6 + spread, 26, 18, 22, 12 + spread, 36);
+    g.fillTriangle(34 - spread, 26, 22, 22, 28 - spread, 36);
+
+    // Furred thorax/abdomen down the middle.
+    g.fillStyle(COLORS.playerOutline, 1);
+    g.fillEllipse(s / 2, 22, 10, 22);
+    g.fillStyle(MART.mothBody, 1);
+    g.fillEllipse(s / 2, 22, 8, 20);
+    for (let i = 0; i < 5; i++) {
+      this.px(g, MART.mothWingSpot, 17, 14 + i * 4, 6, 1, 0.5);
+    }
+
+    if (facing === "front") {
+      // Big dark compound eyes + feathered antennae.
+      this.px(g, COLORS.monsterEye, 16, 9, 3, 3, 1);
+      this.px(g, COLORS.monsterEye, 21, 9, 3, 3, 1);
+      this.px(g, MART.mothBody, 15, 4, 1, 5, 0.9);
+      this.px(g, MART.mothBody, 24, 4, 1, 5, 0.9);
+      this.px(g, MART.mothBody, 13, 3, 3, 1, 0.7);
+      this.px(g, MART.mothBody, 24, 3, 3, 1, 0.7);
+    } else {
+      // Rear: just the abdomen tip and duller wing spots.
+      this.px(g, MART.mothWingSpot, 18, 32, 4, 3, 0.7);
+    }
+  }
+
+  /**
+   * The Duller: too tall and too empty — an elongated featureless head on a
+   * drawn-out neck and a narrow drape of a body, arms hanging straight to
+   * the knees. It glides (no walk cycle), so the stride frame only sways.
+   */
+  private drawDuller(
+    g: Phaser.GameObjects.Graphics,
+    s: number,
+    facing: Facing,
+    stride: boolean,
+  ): void {
+    const sway = stride ? 1 : 0;
+
+    // Elongated head, taller than wide.
+    g.fillStyle(COLORS.playerOutline, 1);
+    g.fillEllipse(s / 2 + sway, 8, 12, 16);
+    g.fillStyle(COLORS.monsterBody, 1);
+    g.fillEllipse(s / 2 + sway, 8, 10, 14);
+    if (facing === "front") {
+      // Not eyes — two faint depressions where light stops.
+      this.px(g, COLORS.monsterBodyShade, 17 + sway, 7, 2, 3, 0.5);
+      this.px(g, COLORS.monsterBodyShade, 21 + sway, 7, 2, 3, 0.5);
+    }
+
+    // Drawn-out neck.
+    this.px(g, COLORS.monsterBody, 18 + sway, 15, 4, 5, 1);
+    this.px(g, COLORS.monsterBodyShade, 20 + sway, 15, 1, 5, 0.5);
+
+    // Narrow draped body, straight-sided, all the way down.
+    this.rr(g, COLORS.playerOutline, 13, 19, 14, 21, 1);
+    this.rr(g, COLORS.monsterBody, 14, 20, 12, 19, 1);
+    this.px(g, COLORS.monsterBodyHi, 14, 20, 2, 18, 0.3);
+    this.px(g, COLORS.monsterBodyShade, 24, 20, 2, 19, 0.5);
+    if (facing === "back") {
+      this.px(g, COLORS.monsterBodyShade, 19.5, 20, 1, 19, 0.6);
+    }
+
+    // Stick arms hanging dead straight past the body's edge.
+    this.px(g, COLORS.monsterLimb, 11, 20 + sway, 2, 16, 1);
+    this.px(g, COLORS.monsterLimb, 27, 20 - sway, 2, 16, 1);
+    this.px(g, COLORS.monsterBodyShade, 11, 35 + sway, 2, 3, 0.8);
+    this.px(g, COLORS.monsterBodyShade, 27, 35 - sway, 2, 3, 0.8);
+  }
+
+  /**
+   * The Wretch: what's left of a wanderer — hunched almost horizontal, a
+   * high humped spine with the ribs showing through, ruined dark eye-pits,
+   * old bloodstains, rags. Back view is the hump and the knuckles of spine.
+   */
+  private drawWretch(
+    g: Phaser.GameObjects.Graphics,
+    _s: number,
+    facing: Facing,
+    stride: boolean,
+  ): void {
+    const shift = stride ? 1 : 0;
+
+    // The hump: body mass pitched forward, higher than the head.
+    g.fillStyle(COLORS.playerOutline, 1);
+    g.fillEllipse(22, 16, 24, 20);
+    g.fillStyle(COLORS.monsterBody, 1);
+    g.fillEllipse(22, 16, 22, 18);
+    // Spine knuckles cresting the hump.
+    for (let i = 0; i < 4; i++) {
+      this.rr(g, COLORS.monsterBodyShade, 15 + i * 5, 6 + Math.abs(i - 1), 4, 3, 0.8);
+    }
+    // Exposed rib shadows raking the flank.
+    for (let i = 0; i < 4; i++) {
+      this.px(g, COLORS.monsterBodyShade, 14, 14 + i * 3, 14, 1, 0.55);
+    }
+    // Old stains, soaked in and dried dark.
+    g.fillStyle(MART.wretchBlood, 0.5);
+    g.fillEllipse(27, 21, 8, 6);
+    g.fillEllipse(16, 24, 5, 4);
+    // Rag remnants across the hindquarters.
+    this.px(g, MART.wretchRag, 25, 12, 8, 4, 0.8);
+    this.px(g, MART.wretchRag, 28, 16, 5, 3, 0.6);
+
+    if (facing === "front") {
+      // Head hung low in front of the body, looking up at you.
+      g.fillStyle(COLORS.playerOutline, 1);
+      g.fillEllipse(12, 25, 15, 13);
+      g.fillStyle(COLORS.monsterBody, 1);
+      g.fillEllipse(12, 25, 13, 11);
+      // Ruined eye-pits — dark, wet, wrong.
+      this.px(g, COLORS.monsterEye, 8, 23, 3, 4, 1);
+      this.px(g, COLORS.monsterEye, 14, 23, 3, 4, 1);
+      this.px(g, MART.wretchBlood, 9, 27, 1, 3, 0.8);
+      this.px(g, MART.wretchBlood, 15, 27, 1, 3, 0.8);
+      // A slack open jaw.
+      this.px(g, COLORS.monsterMawShade, 9, 29, 7, 2, 1);
+    } else {
+      // From behind, the head is hidden by the hump — only knuckles of
+      // spine descending, and the stains.
+      for (let i = 0; i < 3; i++) {
+        this.rr(g, COLORS.monsterBodyShade, 12 - i * 2, 20 + i * 4, 4, 3, 0.7);
+      }
+    }
+
+    // Knuckle-walking arms and crouched legs, offset alternately.
+    this.px(g, COLORS.monsterLimb, 7, 30 - shift, 3, 8, 1);
+    this.px(g, COLORS.monsterLimb, 15, 31 + shift, 3, 7, 1);
+    this.px(g, COLORS.monsterLimb, 24, 29 + shift, 4, 9, 1);
+    this.px(g, COLORS.monsterLimb, 31, 29 - shift, 4, 9, 1);
+    this.px(g, COLORS.monsterBodyShade, 6, 37 - shift, 5, 2, 0.8);
+    this.px(g, COLORS.monsterBodyShade, 30, 37 - shift, 6, 2, 0.8);
+  }
+
+  /**
+   * The Partygoer: bright, soft, and permanently delighted — a big round
+   * balloon-smooth head with a painted-on smiley, a cone party hat, stubby
+   * arms open for the hug. The one thing in here that's glad to see you.
+   */
+  private drawPartygoer(
+    g: Phaser.GameObjects.Graphics,
+    s: number,
+    facing: Facing,
+    stride: boolean,
+  ): void {
+    const shift = stride ? 1 : 0;
+
+    // Round soft body.
+    g.fillStyle(COLORS.playerOutline, 1);
+    g.fillEllipse(s / 2, 27, 22, 20);
+    g.fillStyle(MART.partyBody, 1);
+    g.fillEllipse(s / 2, 27, 20, 18);
+    this.px(g, MART.partyBodyHi, 13, 21, 4, 6, 0.5);
+    this.px(g, MART.partyShade, 25, 24, 3, 9, 0.5);
+
+    // Balloon head.
+    g.fillStyle(COLORS.playerOutline, 1);
+    g.fillEllipse(s / 2, 10, 19, 17);
+    g.fillStyle(MART.partyBody, 1);
+    g.fillEllipse(s / 2, 10, 17, 15);
+    this.px(g, MART.partyBodyHi, 14, 5, 5, 4, 0.6);
+
+    // Cone party hat, tilted jauntily.
+    g.fillStyle(MART.partyHat, 1);
+    g.fillTriangle(23, 3, 30, -1, 29, 7);
+    this.px(g, MART.partyBodyHi, 28, -1, 2, 2, 0.9);
+
+    if (facing === "front") {
+      // The painted smiley: dot eyes and a wide, wide curve.
+      this.px(g, COLORS.monsterEye, 15, 8, 2, 3, 1);
+      this.px(g, COLORS.monsterEye, 23, 8, 2, 3, 1);
+      this.px(g, MART.partyMouth, 13, 13, 2, 1, 1);
+      this.px(g, MART.partyMouth, 14, 14, 2, 1, 1);
+      this.px(g, MART.partyMouth, 15, 15, 10, 1, 1);
+      this.px(g, MART.partyMouth, 24, 14, 2, 1, 1);
+      this.px(g, MART.partyMouth, 25, 13, 2, 1, 1);
+    } else {
+      // Featureless from behind — the smile is only ever for you.
+      this.px(g, MART.partyShade, 19, 4, 2, 12, 0.3);
+    }
+
+    // Stubby arms, spread open in permanent welcome.
+    this.px(g, MART.partyBody, 6, 22 - shift, 5, 3, 1);
+    this.px(g, MART.partyBody, 29, 22 + shift, 5, 3, 1);
+    this.px(g, MART.partyShade, 6, 24 - shift, 5, 1, 0.6);
+    this.px(g, MART.partyShade, 29, 24 + shift, 5, 1, 0.6);
+
+    // Little feet peeking out under the body.
+    this.px(g, MART.partyShade, 14, 36 - shift, 5, 3, 1);
+    this.px(g, MART.partyShade, 21, 36 + shift, 5, 3, 1);
   }
 
   /**

@@ -41,6 +41,9 @@ export const MonsterKindSchema = z.enum([
   "faceling",
   "skinstealer",
   "deathmoth",
+  "duller",
+  "wretch",
+  "partygoer",
 ]) satisfies z.ZodType<MonsterKind>;
 
 export const MonsterSpawnSchema = z.object({

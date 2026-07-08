@@ -1,6 +1,12 @@
 import Phaser from "phaser";
-import { MONSTER, TEXTURES, WALK_CYCLE_MS } from "@/game/config/constants";
-import type { MonsterTuning } from "@/game/ai/types";
+import {
+  MONSTER,
+  MONSTER_ART,
+  monsterTextureKey,
+  WALK_CYCLE_MS,
+  type MonsterArt,
+} from "@/game/config/constants";
+import type { MonsterKind, MonsterTuning } from "@/game/ai/types";
 import {
   hasReached,
   nextWaypointIndex,
@@ -38,6 +44,9 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
    *  ambling, it should look like it's simply *closer* than it was. */
   private readonly noWalkCycle: boolean;
   private readonly idleTween: Phaser.Tweens.Tween;
+  /** Which baked art set this monster's frames come from (see
+   *  {@link MONSTER_ART}) — per-kind sprite art, not just a tint. */
+  private readonly art: MonsterArt;
 
   constructor(
     scene: Phaser.Scene,
@@ -51,13 +60,22 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
     opts?: {
       noWalkCycle?: boolean;
       /** Non-uniform base scale (e.g. the Hound's leaner, lower stance) —
-       *  reads as a distinct silhouette without new sprite art. The idle
+       *  layered on top of the kind's own sprite art. The idle
        *  hunch-and-lurch tween scales relative to this base instead of 1. */
       scaleX?: number;
       scaleY?: number;
+      /** Which entity this is — picks the baked art set. Defaults to the
+       *  gaunt lurker sprite. */
+      kind?: MonsterKind;
     },
   ) {
-    super(scene, x, y, TEXTURES.monster);
+    super(
+      scene,
+      x,
+      y,
+      monsterTextureKey(MONSTER_ART[opts?.kind ?? "lurker"], "front", false),
+    );
+    this.art = MONSTER_ART[opts?.kind ?? "lurker"];
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
@@ -125,13 +143,13 @@ export class Monster extends Phaser.Physics.Arcade.Sprite {
   }
 
   private applyTexture(): void {
-    if (this.facingBack) {
-      this.setTexture(
-        this.walkFrame ? TEXTURES.monsterBackWalk : TEXTURES.monsterBack,
-      );
-    } else {
-      this.setTexture(this.walkFrame ? TEXTURES.monsterWalk : TEXTURES.monster);
-    }
+    this.setTexture(
+      monsterTextureKey(
+        this.art,
+        this.facingBack ? "back" : "front",
+        this.walkFrame,
+      ),
+    );
   }
 
   private drive(velocity: Vec2): void {
