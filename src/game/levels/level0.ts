@@ -3,8 +3,7 @@ import { DIFFICULTY_CONFIG, MAX_MONSTERS } from "@/game/config/constants";
 import { chance, makeRng, pick, randInt, shuffle, type Rng } from "./rng";
 import type { GenerateInput } from "./generate";
 import { pickWallExit } from "./wallExit";
-import type { MonsterKind } from "@/game/ai/types";
-import { pickMonsterKind } from "./roster";
+import { resolveMonsterKind } from "./roster";
 
 /**
  * Level 0 — "The Lobby" — themed after the Backrooms wiki entry
@@ -206,7 +205,7 @@ function makeMonster(id: string, room: Room, rng: Rng) {
   // every other spawn draws its kind from Level 0's roster (deterministic
   // per seed since it consumes the shared `rng`). Level 0 is always
   // levelIndex 0 here.
-  const kind: MonsterKind = id === "pursuer" ? "pursuer" : pickMonsterKind(rng, 0);
+  const kind = resolveMonsterKind(id, rng, 0);
   return {
     id,
     x: c.x,

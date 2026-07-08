@@ -99,6 +99,52 @@ compete with the Pursuit finale.
 reused from the fog-of-war system) **and** being within the fog reveal
 radius — it can't be spotted through fog it hasn't already lit up.
 
+## Per-level monster rosters
+
+Each official level (`OFFICIAL_LEVELS`, index 0–4) now spawns its own
+documented-canon monster mix instead of a single reskinned lurker plus an
+occasional Hound reroll. The roster table lives in
+[`roster.ts`](../src/game/levels/roster.ts) — `LEVEL_MONSTER_ROSTER` (a
+`{ kind, weight }[]` per level index) plus `pickMonsterKind`, a weighted-pick
+helper generators call once per non-pursuer spawn. See
+`tasks/research-canon.md` for the Backrooms-wiki citation pass behind each
+level's kind selection, including where the wiki's own pages disagree with
+each other or where this game's level naming (Level 3 "Poolrooms", Level 4
+"Run For Your Life") diverges from the wiki's actual level numbering. The
+`pursuer` role stays level-agnostic (the scripted chase finale from the
+Ambient/Pursuit/Escaped flow above) and is never rolled from this table.
+
+Per-kind look, feel, and tuning live in
+[`constants.ts`](../src/game/config/constants.ts)'s `MONSTER_KIND_CONFIG` —
+one entry per `MonsterKind` (the union type defined in
+[`types.ts`](../src/game/ai/types.ts)) giving its `MonsterTuning`, tint, and
+optional non-uniform scale. This generalizes the original one-off Hound
+tuning/tint/scale special-case to every roster kind (Smiler, Faceling,
+Skin-Stealer, Deathmoth) without adding new entity classes — still one
+`Monster` sprite, config-driven.
+
+Two config flags let a kind opt out of the default "ambient patrol, lethal
+pursuit" contract without a second state machine:
+
+- **`harmless`** — this kind never attacks or kills, regardless of
+  difficulty or `MonsterDirector` phase. It still patrols and can be
+  glimpsed/heard like any other ambient monster — it's excluded only from
+  the kill/attack check, not from the fear and presence systems. Used by the
+  Faceling (wiki: mimics wanderers, "relatively easy to evade" even angered)
+  and the Deathmoth (a startle-beat swarm graze on contact, never a real
+  threat).
+- **`avoidGaze`** — this kind is meant to be punished by sustained *direct*
+  gaze rather than by the player looking away — the opposite trigger
+  direction from the Stalker above. Models the Skin-Stealer's "avoid eye
+  contact, do not engage" wiki survival advice for Level 1.
+
+Both flags describe a contract, not a fixed call site: the exact mechanics
+consuming them (chase-speed/attack gating for `harmless`, the stare-timer
+scare beat for `avoidGaze`) are being wired into `MainScene.ts` and
+`AudioManager.ts` concurrently with this doc, so treat this section as the
+flags' intended purpose rather than a guarantee of their present
+implementation.
+
 ## Reactive FSM (library, unused in-game)
 
 ### Design

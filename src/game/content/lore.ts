@@ -132,8 +132,9 @@ export const LEVEL_LORE: Record<number, readonly LoreEntry[]> = {
       body:
         "Designation: Level 2. A maintenance-tunnel maze of rusted pipework, " +
         "near-total darkness, and ambient heat well above comfortable. " +
-        "Deathmoths cluster near active steam vents; Hound packs pass " +
-        "through en route to other levels rather than nesting here.",
+        "Deathmoths are drawn to light more than to the heat itself — keep " +
+        "torches low. Hound packs pass through en route to other levels " +
+        "rather than nesting here.",
     },
     {
       kind: "letter",
@@ -182,7 +183,9 @@ export const LEVEL_LORE: Record<number, readonly LoreEntry[]> = {
         "Designation: Level 3. Seamless ceramic tile, standing water at a " +
         "stable temperature, faint chlorine-adjacent smell. Wanderers use " +
         "these rooms to wash off residue from Pipe Dreams before continuing. " +
-        "No confirmed hostile entities as of this writing.",
+        "No confirmed resident hostile entities as of this writing — the " +
+        "rare report of something on all fours passing through is " +
+        "unverified, and if real, isn't native to these rooms.",
     },
     {
       kind: "letter",

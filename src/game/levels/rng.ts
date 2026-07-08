@@ -52,8 +52,10 @@ export function weightedPick<T extends { weight: number }>(
   const total = items.reduce((sum, item) => sum + item.weight, 0);
   let roll = rng() * total;
   for (const item of items) {
+    // Strict `<` (checked before subtracting) means a zero-weight item can
+    // never be selected, even on the boundary roll of exactly 0.
+    if (roll < item.weight) return item;
     roll -= item.weight;
-    if (roll <= 0) return item;
   }
   return items[items.length - 1]!;
 }

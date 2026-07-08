@@ -67,3 +67,19 @@ export function pickMonsterKind(rng: Rng, levelIndex: number): MonsterKind {
   const roster = LEVEL_MONSTER_ROSTER[levelIndex] ?? LEVEL_MONSTER_ROSTER[0]!;
   return weightedPick(rng, roster).kind;
 }
+
+/** The level-agnostic scripted-chase finale — never rolled from a level's
+ *  roster, always this exact id/kind. Shared by every generator so the
+ *  "is this spawn the pursuer" rule lives in one place. */
+export const PURSUER_ID = "pursuer";
+
+/** Resolves a monster spawn's kind: pinned `"pursuer"` for the pursuer id,
+ *  otherwise a roster roll for the given level. Shared by `generate.ts` and
+ *  `level0.ts` so the two generators can't drift on this rule. */
+export function resolveMonsterKind(
+  id: string,
+  rng: Rng,
+  levelIndex: number,
+): MonsterKind {
+  return id === PURSUER_ID ? "pursuer" : pickMonsterKind(rng, levelIndex);
+}

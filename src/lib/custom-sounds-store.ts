@@ -15,6 +15,8 @@ export const SOUND_SLOTS = [
   { id: "bang", label: "Bang — sudden slam ambient anomaly" },
   { id: "whisper", label: "Whisper — distant ambient anomaly" },
   { id: "howl", label: "Howl — distant Hound ambient anomaly" },
+  { id: "hiss", label: "Hiss — Skin-Stealer noticed you staring" },
+  { id: "wingBuzz", label: "Wing buzz — Deathmoth swarm graze" },
 ] as const;
 
 export type SoundSlot = (typeof SOUND_SLOTS)[number]["id"];

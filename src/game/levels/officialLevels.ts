@@ -30,28 +30,38 @@ export const OFFICIAL_LEVELS: readonly OfficialLevel[] = [
     name: "Level 0 — The Lobby",
     blurb:
       "Mono-yellow rooms: pillar halls, pitch-black pits, sticky red rooms — " +
-      "find the flickering wall and throw yourself into Level 1.",
+      "keep your light low, because something out there loves it too much. " +
+      "Find the flickering wall and throw yourself into Level 1.",
     theme: { tint: 0xffffff, fog: 0x05050a, style: "lobby" },
   },
   {
     index: 1,
     id: "level-1",
     name: "Level 1 — Habitable Zone",
-    blurb: "A warehouse of bare concrete and exposed rebar. Something else walks here too.",
+    blurb:
+      "A warehouse of bare concrete and exposed rebar — the old camps are " +
+      "half-friendly, but not everything upright in here is glad to see you. " +
+      "Keep quiet, and don't stare back at whatever stares first.",
     theme: { tint: 0xffffff, fog: 0x080a0d, style: "habitable" },
   },
   {
     index: 2,
     id: "level-2",
     name: "Level 2 — Pipe Dreams",
-    blurb: "Rusted pipes line a scalding maintenance tunnel — total dark, and the mould smell never leaves.",
+    blurb:
+      "Rusted pipes line a scalding maintenance tunnel — total dark, and the " +
+      "mould smell never leaves. Keep the light low; something out here is " +
+      "drawn to it, and it isn't alone in the dark.",
     theme: { tint: 0xffffff, fog: 0x05100c, style: "pipedreams" },
   },
   {
     index: 3,
     id: "level-3",
     name: "Level 3 — Poolrooms",
-    blurb: "Warm, waist-deep water and endless pristine white tile. No exit in sight.",
+    blurb:
+      "Warm, waist-deep water and endless pristine white tile. No exit in " +
+      "sight — and on a still day, you can almost convince yourself you're " +
+      "alone in it too.",
     theme: { tint: 0xffffff, fog: 0x061014, style: "poolrooms" },
   },
   {

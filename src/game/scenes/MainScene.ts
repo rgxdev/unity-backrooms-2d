@@ -5,6 +5,7 @@ import {
   BLACKOUT_EVENT,
   BLACKOUT_MIN_ALPHA,
   COLORS,
+  DEATHMOTH,
   DECORATION,
   DIFFICULTY_CONFIG,
   DREAD,
@@ -12,16 +13,17 @@ import {
   FEAR,
   FLASHLIGHT,
   FLOOR_VARIANTS,
-  HOUND,
   JUMPSCARE,
   LORE_PICKUP,
   MONSTER_KIND_CONFIG,
+  type MonsterKindConfig,
   MONSTER_STEALTH,
   MONSTER_TINT,
   OLDSCHOOL_FX,
   PATHFIND,
   PURSUIT_CATCH,
   SCENES,
+  SKINSTEALER,
   STALKER,
   STYLE_COLORS,
   STYLE_PROPS,
@@ -42,6 +44,7 @@ import {
   LAST_LEVEL_INDEX,
   type LevelTheme,
 } from "@/game/levels";
+import { pickMonsterKind } from "@/game/levels/roster";
 import { addSoftVignette, SoftVignetteController } from "@/game/fx/SoftVignette";
 import { Player } from "@/game/entities/Player";
 import { Monster } from "@/game/entities/Monster";
@@ -60,6 +63,7 @@ import {
 import { DEFAULT_MONSTER_TUNING } from "@/game/ai/types";
 import type { MonsterKind } from "@/game/ai/types";
 import { StalkerAI, StalkerState } from "@/game/ai/StalkerAI";
+import { SkinStealerAI, SkinStealerState } from "@/game/ai/SkinStealerAI";
 import type { Vec2 } from "@/game/ai/steering";
 import { findPath } from "@/game/ai/pathfinding";
 import { getSettings } from "@/lib/settings-store";
@@ -135,6 +139,13 @@ export class MainScene extends Phaser.Scene {
    *  audio cue, and (later) behavior lookups generically instead of a
    *  Hound-only special case. */
   private readonly monsterKinds = new WeakMap<Monster, MonsterKind>();
+  /** Per-instance "avoid eye contact" brain for every live roster Skin-Stealer
+   *  (see SkinStealerAI) — a level can have more than one, unlike the single
+   *  persistent Stalker. */
+  private readonly skinStealerAI = new WeakMap<Monster, SkinStealerAI>();
+  /** Per-instance cooldown gate for the Deathmoth's contact "swarm graze"
+   *  beat, so brushing past one can't spam the cue every frame. */
+  private readonly deathmothGrazeCooldownUntil = new WeakMap<Monster, number>();
   /** True once the level has resolved (escaped or died); freezes gameplay. */
   private ended = false;
   private restarted = false;
@@ -162,6 +173,11 @@ export class MainScene extends Phaser.Scene {
   /** True when the current encounter is a silent "peek" — it never attacks,
    *  it just proves something was watching. */
   private jumpscareIsPeek = false;
+  /** Which `MonsterKind` the current jump-scare encounter rolled as (see
+   *  {@link trySpawnJumpscare}) — its tint/scale come from
+   *  `MONSTER_KIND_CONFIG`, and a `harmless` roll (Faceling/Deathmoth) must
+   *  never attack regardless of difficulty, same as a roster spawn. */
+  private jumpscareKind: MonsterKind = "lurker";
 
   /** The Stalker: a "don't look away" horror mechanic — see StalkerAI. */
   private readonly stalkerAI = new StalkerAI();
@@ -353,6 +369,7 @@ export class MainScene extends Phaser.Scene {
     this.jumpscareDespawnAt = 0;
     this.jumpscareAttacked = false;
     this.jumpscareIsPeek = false;
+    this.jumpscareKind = "lurker";
     this.stalkerAI.reset();
     this.stalkerMonster = null;
     this.nextBlackoutAt = -1;
@@ -1104,21 +1121,35 @@ export class MainScene extends Phaser.Scene {
         waypoints,
         kindConfig.tuning,
         this.roleTint(kindConfig.tint),
-        {
-          ...(kindConfig.noWalkCycle !== undefined && {
-            noWalkCycle: kindConfig.noWalkCycle,
-          }),
-          ...(kindConfig.scale && {
-            scaleX: kindConfig.scale.x,
-            scaleY: kindConfig.scale.y,
-          }),
-        },
+        this.monsterOptsFor(kindConfig),
       );
       monster.setDepth(90);
       this.monsterKinds.set(monster, spawn.kind);
       this.physics.add.collider(monster, this.walls);
       return monster;
     });
+  }
+
+  /** Builds the `Monster` constructor's visual-tweak bag from a kind's
+   *  config, shared by every spawn path (ambient roster spawns, jump-scares)
+   *  so they can't drift apart. `noWalkCycleOverride` lets a caller force the
+   *  glide behaviour regardless of the kind's own default (jump-scares always
+   *  glide in — they shouldn't look like they walked into place). */
+  private monsterOptsFor(
+    kindConfig: MonsterKindConfig,
+    noWalkCycleOverride?: boolean,
+  ): { noWalkCycle?: boolean; scaleX?: number; scaleY?: number } {
+    const noWalkCycle = noWalkCycleOverride ?? kindConfig.noWalkCycle;
+    return {
+      // exactOptionalPropertyTypes forbids assigning `undefined` to an
+      // optional key directly — the key must be omitted, not set to
+      // undefined — hence the conditional spreads rather than a plain object.
+      ...(noWalkCycle !== undefined && { noWalkCycle }),
+      ...(kindConfig.scale && {
+        scaleX: kindConfig.scale.x,
+        scaleY: kindConfig.scale.y,
+      }),
+    };
   }
 
   /** A walkable, in-bounds tile at a random angle within `[minRadiusTiles,
@@ -1423,11 +1454,22 @@ export class MainScene extends Phaser.Scene {
         })) ?? [],
       );
     }
+    const kind = this.monsterKinds.get(monster) ?? "lurker";
     const speed =
-      this.monsterKinds.get(monster) === "hound"
-        ? this.pursuitSpeed * HOUND.chaseSpeedMultiplier
-        : this.pursuitSpeed;
+      this.pursuitSpeed * (MONSTER_KIND_CONFIG[kind].chaseSpeedMultiplier ?? 1);
     monster.followChasePath(speed, playerPos);
+  }
+
+  /** True for kinds that can never harm/kill the player, whatever the
+   *  difficulty or phase (Faceling, Deathmoth — see
+   *  `MONSTER_KIND_CONFIG[kind].harmless`). Every place a roster monster can
+   *  actually catch/attack the player must check this first. */
+  private isHarmlessKind(kind: MonsterKind): boolean {
+    return MONSTER_KIND_CONFIG[kind].harmless ?? false;
+  }
+
+  private isHarmlessMonster(monster: Monster): boolean {
+    return this.isHarmlessKind(this.monsterKinds.get(monster) ?? "lurker");
   }
 
   private inRect(
@@ -1474,6 +1516,8 @@ export class MainScene extends Phaser.Scene {
         this.presenceCue(time, playerPos, proximity);
         this.updateJumpscare(time, playerPos, proximity);
         this.updateStalker(deltaMs, playerPos);
+        this.updateSkinStealers(deltaMs, playerPos);
+        this.updateDeathmoths(time, playerPos);
         this.updateBlackout(time);
         break;
       }
@@ -1493,6 +1537,10 @@ export class MainScene extends Phaser.Scene {
           } else {
             this.driveMonsterAlongPath(m, playerPos, time);
           }
+          // Harmless kinds (Faceling, Deathmoth) still close in during
+          // Pursuit — still a scare, still ambiguous — but must never be
+          // eligible to actually catch/kill the player, per wiki canon.
+          if (this.isHarmlessMonster(m)) continue;
           const d = m.distanceTo(playerPos);
           if (d < nearest) {
             nearest = d;
@@ -1545,7 +1593,13 @@ export class MainScene extends Phaser.Scene {
     let fear = 0;
     if (this.phase === GamePhase.Pursuit) fear = Math.max(fear, 0.85);
     for (const m of this.monsters) {
-      const closeness = 1 - m.distanceTo(playerPos) / DREAD.presenceRadius;
+      // Harmless kinds (Faceling, Deathmoth) still register as a threat
+      // glimpse — the intended scare is "was that the safe one?" ambiguity —
+      // but weighted down since they canonically can't actually hurt the
+      // player, so they never alone drive fear as hard as a real threat.
+      const weight = this.isHarmlessMonster(m) ? 0.65 : 1;
+      const closeness =
+        (1 - m.distanceTo(playerPos) / DREAD.presenceRadius) * weight;
       fear = Math.max(fear, closeness);
     }
     if (this.jumpscareMonster) {
@@ -1775,6 +1829,122 @@ export class MainScene extends Phaser.Scene {
     monster.setVisible(false);
   }
 
+  /**
+   * The Skin-Stealer's "avoid eye contact" mechanic (see SkinStealerAI) —
+   * opposite trigger direction from the Stalker: sustained direct gaze
+   * provokes it instead of looking away. Every live roster Skin-Stealer gets
+   * its own brain (a level can have more than one). Outside the trigger it's
+   * just an ambient patrol monster — {@link Monster.tickAmbient}, already
+   * called this frame for every monster, is left alone.
+   */
+  private updateSkinStealers(deltaMs: number, playerPos: Vec2): void {
+    const playerTile = this.playerTile();
+    for (const m of this.monsters) {
+      const kind = this.monsterKinds.get(m);
+      if (!kind || !MONSTER_KIND_CONFIG[kind].avoidGaze) continue;
+      let ai = this.skinStealerAI.get(m);
+      if (!ai) {
+        ai = new SkinStealerAI();
+        this.skinStealerAI.set(m, ai);
+      }
+
+      const monsterTile = {
+        x: Math.floor(m.x / TILE_SIZE),
+        y: Math.floor(m.y / TILE_SIZE),
+      };
+      const tileDist = Phaser.Math.Distance.Between(
+        playerTile.x,
+        playerTile.y,
+        monsterTile.x,
+        monsterTile.y,
+      );
+      // Same "seen" definition the Stalker uses (LOS + within the fog reveal
+      // radius, plus its small bonus band) so both gaze mechanics agree on
+      // what "the player can see it" means.
+      const gazed =
+        tileDist <= VISIBILITY.revealRadiusTiles + STALKER.visRadiusBonusTiles &&
+        this.visibility.hasLineOfSight(
+          playerTile.x,
+          playerTile.y,
+          monsterTile.x,
+          monsterTile.y,
+          (x, y) => this.isWallTile(x, y),
+        );
+
+      const prevState = ai.current;
+      const state = ai.update(deltaMs / 1000, { gazed });
+
+      switch (state) {
+        case SkinStealerState.Lunging:
+          if (prevState !== SkinStealerState.Lunging) {
+            this.onSkinStealerNotice(m, playerPos);
+          }
+          // Held in place for the lunge's duration — it already snapped into
+          // the player's face on the transition above.
+          m.freeze();
+          break;
+        case SkinStealerState.Retreating:
+          m.freeze();
+          break;
+        // Docile: leave tickAmbient's patrol drive (already applied this
+        // frame) exactly as-is.
+      }
+    }
+  }
+
+  /** The Skin-Stealer's scare beat: closes distance fast right into the
+   *  player's face, its own hiss cue and camera pulse — deliberately
+   *  distinct from the Stalker's scream/flash so it reads as a different
+   *  threat, not a recolor of the same grab. */
+  private onSkinStealerNotice(monster: Monster, playerPos: Vec2): void {
+    const angle = Math.random() * Math.PI * 2;
+    monster.setPosition(
+      playerPos.x + Math.cos(angle) * SKINSTEALER.lungeOffset,
+      playerPos.y + Math.sin(angle) * SKINSTEALER.lungeOffset,
+    );
+
+    const pan = Phaser.Math.Clamp((monster.x - this.player.x) / 200, -1, 1);
+    this.audio.hiss(0.75, pan);
+    this.cameras.main.flash(220, 90, 130, 40);
+    this.cameras.main.shake(320, 0.013);
+    this.pulseBarrel(0.65, 260);
+
+    // Below lethal difficulties this only ever scares, matching how every
+    // other non-pursuer threat (Stalker, jump-scares) is gated.
+    if (this.lethal) this.onDeath();
+  }
+
+  /**
+   * Deathmoth (Level 2, wiki entity-4) contact "swarm graze": a brief,
+   * startling-but-harmless beat on a per-moth cooldown so brushing past one
+   * can't spam it every frame. Always harmless — see
+   * {@link MONSTER_KIND_CONFIG}'s `deathmoth.harmless` flag, audited across
+   * every kill/attack path in {@link updateAi}/{@link updateJumpscare}.
+   */
+  private updateDeathmoths(time: number, playerPos: Vec2): void {
+    for (const m of this.monsters) {
+      if (this.monsterKinds.get(m) !== "deathmoth") continue;
+      if (m.distanceTo(playerPos) > DEATHMOTH.grazeRadius) continue;
+      const cooldownUntil = this.deathmothGrazeCooldownUntil.get(m) ?? 0;
+      if (time < cooldownUntil) continue;
+      this.deathmothGrazeCooldownUntil.set(
+        m,
+        time + DEATHMOTH.grazeCooldownMs,
+      );
+      this.onDeathmothGraze(m);
+    }
+  }
+
+  /** The swarm graze beat itself: its own wing-buzz cue plus the lightest
+   *  existing screen-flutter tools (a quick flash/shake), reused rather than
+   *  new FX — never lethal, never anything more than a startle. */
+  private onDeathmothGraze(monster: Monster): void {
+    const pan = Phaser.Math.Clamp((monster.x - this.player.x) / 200, -1, 1);
+    this.audio.wingBuzz(0.5, pan);
+    this.cameras.main.flash(140, 200, 200, 160);
+    this.cameras.main.shake(90, 0.003);
+  }
+
   /** Random ambient power-flicker beat — the lights gutter and the room goes
    *  briefly dark, no monster required. Pure atmosphere. */
   private updateBlackout(time: number): void {
@@ -1945,7 +2115,10 @@ export class MainScene extends Phaser.Scene {
     this.lastCueAt = time;
     // Louder the closer it is.
     const closeness = 1 - nearest / DREAD.presenceRadius;
-    if (nearestMonster && this.monsterKinds.get(nearestMonster) === "hound") {
+    const nearestKind = nearestMonster
+      ? this.monsterKinds.get(nearestMonster) ?? "lurker"
+      : "lurker";
+    if (MONSTER_KIND_CONFIG[nearestKind].presenceCue === "bark") {
       this.audio.bark(0.3 + closeness * 0.45);
     } else {
       this.audio.growl(0.25 + closeness * 0.4);
@@ -1993,6 +2166,7 @@ export class MainScene extends Phaser.Scene {
       if (
         !this.jumpscareAttacked &&
         !this.jumpscareIsPeek &&
+        !this.isHarmlessKind(this.jumpscareKind) &&
         this.difficulty !== "easy" &&
         dist <= JUMPSCARE.attackRadius
       ) {
@@ -2027,7 +2201,11 @@ export class MainScene extends Phaser.Scene {
   /** Try a handful of candidate tiles in view range and spawn on the first
    *  one that's walkable and actually visible to the player. A fraction of
    *  encounters are a silent "peek" — a silhouette that never approaches or
-   *  attacks and vanishes fast, unsettling precisely because nothing happens. */
+   *  attacks and vanishes fast, unsettling precisely because nothing happens.
+   *  The encounter's kind is rolled from the current level's own roster
+   *  (excluding `pursuer`, which never appears in a roster) so Level 0's
+   *  jump-scares mostly read as Smiler-tinted and every other level gets its
+   *  own kind mix instead of one hardcoded generic look. */
   private trySpawnJumpscare(time: number, exitProximity: number): void {
     const origin = this.playerTile();
     const isWall = (x: number, y: number) => this.isWallTile(x, y);
@@ -2052,6 +2230,8 @@ export class MainScene extends Phaser.Scene {
         continue;
       }
 
+      const kind = pickMonsterKind(Math.random, this.levelIndex);
+      const kindConfig = MONSTER_KIND_CONFIG[kind];
       const c = this.centreOf(tx, ty);
       const monster = new Monster(
         this,
@@ -2059,8 +2239,8 @@ export class MainScene extends Phaser.Scene {
         c.y,
         [],
         DEFAULT_MONSTER_TUNING,
-        this.roleTint(MONSTER_TINT.jumpscare),
-        { noWalkCycle: true },
+        this.roleTint(kindConfig.tint),
+        this.monsterOptsFor(kindConfig, true),
       );
       monster.setDepth(90);
       monster.setAlpha(0);
@@ -2073,6 +2253,7 @@ export class MainScene extends Phaser.Scene {
       });
 
       this.jumpscareMonster = monster;
+      this.jumpscareKind = kind;
       this.jumpscareAttacked = false;
       this.jumpscareIsPeek = Math.random() < JUMPSCARE.peekChance;
       const visibleMs = this.jumpscareIsPeek

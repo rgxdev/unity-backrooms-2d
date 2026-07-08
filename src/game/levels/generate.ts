@@ -3,8 +3,7 @@ import type { Difficulty } from "@/lib/schemas/settings";
 import { DIFFICULTY_CONFIG, MAX_MONSTERS } from "@/game/config/constants";
 import { chance, makeRng, pick, randInt, shuffle, type Rng } from "./rng";
 import { pickWallExit } from "./wallExit";
-import type { MonsterKind } from "@/game/ai/types";
-import { pickMonsterKind } from "./roster";
+import { resolveMonsterKind } from "./roster";
 
 interface Room {
   x: number;
@@ -211,8 +210,7 @@ function makeMonster(id: string, room: Room, rng: Rng, levelIndex: number) {
   // The pursuer role is level-agnostic and never rolled from the roster;
   // every other spawn draws its kind from the level's roster (deterministic
   // per seed since it consumes the shared `rng`).
-  const kind: MonsterKind =
-    id === "pursuer" ? "pursuer" : pickMonsterKind(rng, levelIndex);
+  const kind = resolveMonsterKind(id, rng, levelIndex);
   return { id, x: c.x, y: c.y, patrol, kind };
 }
 

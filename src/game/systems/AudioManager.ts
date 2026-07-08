@@ -598,6 +598,60 @@ export class AudioManager {
     osc.stop(t0 + 1.95);
   }
 
+  /** The Skin-Stealer's "you were staring" scare beat: a sibilant hiss
+   *  collapsing into a low, descending snarl — deliberately *not* an
+   *  ascending shriek like {@link scream}, so it reads as a different threat
+   *  noticing you, not a recolor of the Stalker's grab. */
+  hiss(intensity = 0.7, pan = 0): void {
+    if (this.playCustom("hiss", pan, intensity)) return;
+    this.noiseBurst(0.5, intensity * 0.7, 3000, pan);
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    const gain = ctx.createGain();
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(150, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(90, ctx.currentTime + 0.4);
+    const peak = Math.max(0.0001, intensity * 0.6 * this.masterVolume);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + 0.06);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+    osc.connect(gain);
+    this.connectOut(gain, ctx, pan);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.52);
+  }
+
+  /** The Deathmoth's "swarm graze" — several quick, overlapping wing-flutter
+   *  blips over a thin noise bed, reading as insect wings brushing past
+   *  rather than a growl/bark/hiss. Always a startle, never a threat cue (see
+   *  {@link MonsterKindConfig.harmless} in constants.ts). */
+  wingBuzz(intensity = 0.4, pan = 0): void {
+    if (this.playCustom("wingBuzz", pan, intensity)) return;
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    this.noiseBurst(0.4, intensity * 0.5, 3400, pan);
+    let t = ctx.currentTime;
+    const blips = 5 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < blips; i++) {
+      const gain = ctx.createGain();
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      const base = 180 + Math.random() * 90;
+      osc.frequency.setValueAtTime(base, t);
+      osc.frequency.linearRampToValueAtTime(base * 1.3, t + 0.03);
+      const peak = Math.max(0.0001, intensity * 0.35 * this.masterVolume);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(peak, t + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+      osc.connect(gain);
+      this.connectOut(gain, ctx, pan);
+      osc.start(t);
+      osc.stop(t + 0.06);
+      t += 0.045 + Math.random() * 0.03;
+    }
+  }
+
   /** The Stalker's lunge: a ragged shriek-into-growl hybrid, close and wet —
    *  distinct from every other cue, reserved for the "don't look away" grab. */
   scream(intensity = 0.75, pan = 0): void {

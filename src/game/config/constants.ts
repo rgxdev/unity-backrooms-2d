@@ -118,19 +118,22 @@ export const DIFFICULTY_CONFIG: Record<Difficulty, DifficultyConfig> = {
   easy: {
     lethal: false,
     pursuitSpeed: 155,
-    base: { width: 40, height: 30, rooms: 9, monsters: 3, extraLinks: 3 },
-    perLevel: { width: 4, height: 3, rooms: 2, monsters: 0 },
+    base: { width: 40, height: 30, rooms: 9, monsters: 4, extraLinks: 3 },
+    // Easy now also ramps monster count per level (was flat at 3 always) so
+    // the wider per-level roster (Task 3) actually gets room to show up —
+    // never lethal, so more bodies reads as "busier," not "harder."
+    perLevel: { width: 4, height: 3, rooms: 2, monsters: 1 },
   },
   middle: {
     lethal: true,
     pursuitSpeed: 172,
-    base: { width: 54, height: 40, rooms: 13, monsters: 4, extraLinks: 4 },
+    base: { width: 54, height: 40, rooms: 13, monsters: 6, extraLinks: 4 },
     perLevel: { width: 5, height: 4, rooms: 2, monsters: 1 },
   },
   hard: {
     lethal: true,
     pursuitSpeed: 190,
-    base: { width: 68, height: 50, rooms: 18, monsters: 5, extraLinks: 5 },
+    base: { width: 68, height: 50, rooms: 18, monsters: 7, extraLinks: 5 },
     perLevel: { width: 6, height: 4, rooms: 2, monsters: 1 },
   },
 } as const;
@@ -207,6 +210,33 @@ export const STALKER = {
 } as const;
 
 /**
+ * The Skin-Stealer's "avoid eye contact" scare beat (see SkinStealerAI) —
+ * the opposite trigger direction from the Stalker above: sustained direct
+ * gaze provokes it instead of looking away. Per wiki `level-1`'s own
+ * survival advice ("avoid eye contact, do not engage"). Applies to every
+ * live roster Skin-Stealer (a level can have more than one), not a single
+ * persistent entity like the Stalker.
+ */
+export const SKINSTEALER = {
+  /** World-unit offset it snaps to from the player when it lunges — mirrors
+   *  STALKER.lungeOffset's "right in their face" beat. */
+  lungeOffset: 18,
+} as const;
+
+/**
+ * Deathmoth (Level 2, wiki entity-4) contact "swarm graze" — a brief,
+ * harmless-but-startling beat, never lethal (see
+ * `MONSTER_KIND_CONFIG.deathmoth.harmless`).
+ */
+export const DEATHMOTH = {
+  /** World-unit proximity at which brushing past one triggers the graze. */
+  grazeRadius: 28,
+  /** Minimum time between graze beats for the same moth (ms) — otherwise
+   *  standing next to one would spam the cue every frame. */
+  grazeCooldownMs: 2600,
+} as const;
+
+/**
  * Dynamic tension: a 0..1 "fear" value derived each frame from the nearest
  * threat, driving the heartbeat cue and the screen vignette so dread reads
  * physically, not just as an audio cue.
@@ -256,8 +286,11 @@ export const OLDSCHOOL_FX = {
   glitchMs: 220,
 } as const;
 
-/** Never generate more monsters than this, whatever the difficulty/index. */
-export const MAX_MONSTERS = 10;
+/** Never generate more monsters than this, whatever the difficulty/index.
+ *  Raised from 10 to fit hard Level 4 (base 7 + perLevel 1*4 = 11) with a
+ *  little headroom — the single-nearest-visible stealth rule
+ *  ({@link MONSTER_STEALTH}) keeps a higher count from reading as clutter. */
+export const MAX_MONSTERS = 12;
 
 /**
  * The Flashlight: a single rare pickup, findable only in the first level
@@ -646,7 +679,6 @@ export const WALK_CYCLE_MS = 190;
 export const MONSTER_TINT = {
   pursuer: 0xff9d84, // hottest — the one that ends the level
   lurker: 0xffffff, // neutral — the default patrol threat
-  jumpscare: 0xcbb8ff, // pale violet — the fleeting glimpse
   stalker: 0xd8d0e8, // bone-pale, almost still-life — the "don't look away" thing
   hound: 0xc46a3c, // rusty feral red-brown — the noise-drawn pack hunter
   smiler: 0xfff29a, // sickly bright grin-yellow — the light-chaser
@@ -658,18 +690,11 @@ export const MONSTER_TINT = {
 /**
  * The Hound: a second ambient-monster archetype (see lore.ts's "Entities of
  * the Upper Levels" entry) — faster and leaner than the default lurker, and
- * drawn by noise rather than sight. A fraction of a level's ambient monsters
- * roll as Hounds instead, from Level 1 (Habitable Zone) onward, so the
- * threat mix varies run to run instead of every patrol reading identical.
+ * drawn by noise rather than sight. Which levels roll Hounds, and how often,
+ * is now `LEVEL_MONSTER_ROSTER`'s job (see `game/levels/roster.ts`) — only
+ * the visual/movement tuning that isn't roster data lives here.
  */
 export const HOUND = {
-  /** Chance a given non-pursuer ambient monster spawns as a Hound. */
-  spawnChance: 0.32,
-  /** Lowest level index Hounds start appearing at (Level 0 stays lurker-only,
-   *  matching the field-guide's "Upper Levels" framing). */
-  minLevelIndex: 1,
-  /** Faster patrol than the default lurker (see MONSTER.patrolSpeed). */
-  patrolSpeed: 76,
   /** Multiplies the scene's shared Pursuit-phase chase speed. */
   chaseSpeedMultiplier: 1.22,
   /** Non-uniform base scale — leaner and lower, reading as a hunting
@@ -703,8 +728,17 @@ export interface MonsterKindConfig {
   /** Punished by sustained direct gaze rather than by looking away — the
    *  Skin-Stealer's "avoid eye contact, do not engage" survival advice
    *  (wiki `level-1`). Opposite trigger direction from the Stalker, which
-   *  punishes looking *away*. Consumed by the Task 5 gaze mechanic. */
+   *  punishes looking *away*. Consumed by `MainScene.updateSkinStealers`,
+   *  which reads this flag rather than the kind name directly, so any future
+   *  kind can opt into the same mechanic just by setting it. */
   avoidGaze?: boolean;
+  /** Multiplies the scene's shared Pursuit-phase chase speed — lets a kind's
+   *  chase read as faster/more relentless than the baseline pursuer without
+   *  a separate movement system. Omit for the unmultiplied baseline (1x). */
+  chaseSpeedMultiplier?: number;
+  /** Which ambient presence cue (see `MainScene.presenceCue`) plays when this
+   *  is the nearest threat. Omit for the default low growl. */
+  presenceCue?: "bark";
 }
 
 export const MONSTER_KIND_CONFIG: Record<MonsterKind, MonsterKindConfig> = {
@@ -714,14 +748,27 @@ export const MONSTER_KIND_CONFIG: Record<MonsterKind, MonsterKindConfig> = {
     tuning: HOUND_TUNING,
     tint: MONSTER_TINT.hound,
     scale: { x: HOUND.scaleX, y: HOUND.scaleY },
+    chaseSpeedMultiplier: HOUND.chaseSpeedMultiplier,
+    presenceCue: "bark",
   },
-  smiler: { tuning: SMILER_TUNING, tint: MONSTER_TINT.smiler },
+  // Drawn to light (see SMILER_TUNING) and canonically triggered into a hard
+  // chase by a fleeing target — a noticeably more relentless Pursuit than
+  // the baseline pursuer once it's actually chasing.
+  smiler: {
+    tuning: SMILER_TUNING,
+    tint: MONSTER_TINT.smiler,
+    chaseSpeedMultiplier: 1.18,
+  },
   faceling: { tuning: FACELING_TUNING, tint: MONSTER_TINT.faceling, harmless: true },
   skinstealer: {
     tuning: SKINSTEALER_TUNING,
     tint: MONSTER_TINT.skinstealer,
     scale: { x: 1, y: 1.05 },
     avoidGaze: true,
+    // Docile/wandering baseline, but wiki canon (entity-10) is explicit that
+    // its hunger-state hunts with real speed — a mild edge over the baseline
+    // pursuer once its own gaze-notice lunge (see SkinStealerAI) fires.
+    chaseSpeedMultiplier: 1.1,
   },
   deathmoth: {
     tuning: DEATHMOTH_TUNING,
