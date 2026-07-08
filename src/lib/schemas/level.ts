@@ -44,6 +44,9 @@ export const MonsterKindSchema = z.enum([
   "duller",
   "wretch",
   "partygoer",
+  "watcher",
+  "clump",
+  "beast",
 ]) satisfies z.ZodType<MonsterKind>;
 
 export const MonsterSpawnSchema = z.object({
@@ -128,8 +131,7 @@ export const LevelSchema = z
           path: ["exit"],
         });
       } else {
-        const exitTile =
-          level.tiles[level.exit.y * level.width + level.exit.x];
+        const exitTile = level.tiles[level.exit.y * level.width + level.exit.x];
         if (exitTile === TileKind.Wall || exitTile === TileKind.Hole) {
           ctx.addIssue({
             code: "custom",

@@ -53,13 +53,24 @@ const MART = {
   partyShade: 0xc2ae5a,
   partyMouth: 0x2a1c10,
   partyHat: 0xd06a9a,
+  watcherCoat: 0x2e3440,
+  watcherCoatHi: 0x3e4654,
+  watcherEye: 0xf2f6ff,
+  clumpFlesh: 0xb08a7a,
+  clumpFleshHi: 0xc9a08e,
+  clumpFleshShade: 0x7e5c4e,
+  clumpSinew: 0x5c3a30,
+  beastBody: 0x241c2c,
+  beastBodyHi: 0x3a2e46,
+  beastHorn: 0xcabfa8,
+  beastEye: 0xe86a3a,
 } as const;
 
 /** Texture generations processed per frame — paces the loading process into
- *  a visible bar instead of one blocking synchronous burst. Raised from 2
- *  when the queue grew (7 level styles, 13 skins, 9 monster art sets) so the
- *  total load stays around a second at 60fps. */
-const BATCH_SIZE = 6;
+ *  a visible bar instead of one blocking synchronous burst. Raised again as
+ *  the queue grew (9 level styles × 4 wall variants, 21 skins, 12 monster
+ *  art sets ≈ 780 tasks) so the total load stays around a second at 60fps. */
+const BATCH_SIZE = 12;
 
 export class PreloadScene extends Phaser.Scene {
   private queue: Array<() => void> = [];
@@ -128,14 +139,21 @@ export class PreloadScene extends Phaser.Scene {
     for (const style of LEVEL_STYLES) {
       const c = STYLE_COLORS[style];
       for (let variant = 0; variant < FLOOR_VARIANTS; variant++) {
-        tasks.push(() => this.makeFloor(TEXTURES.floor(style, variant), c, variant));
+        tasks.push(() =>
+          this.makeFloor(TEXTURES.floor(style, variant), c, variant),
+        );
       }
       tasks.push(() => this.makeWallCrack(TEXTURES.wallCrack(style), c));
       tasks.push(() => this.makeExit(TEXTURES.exit(style), c));
       for (let mask = 0; mask < WALL_MASK_COUNT; mask++) {
         for (let variant = 0; variant < WALL_VARIANTS; variant++) {
           tasks.push(() =>
-            this.makeWallVariant(TEXTURES.wall(style, mask, variant), c, mask, variant),
+            this.makeWallVariant(
+              TEXTURES.wall(style, mask, variant),
+              c,
+              mask,
+              variant,
+            ),
           );
         }
       }
@@ -185,10 +203,34 @@ export class PreloadScene extends Phaser.Scene {
     }
     for (const art of MONSTER_ARTS) {
       tasks.push(
-        () => this.makeMonsterArt(monsterTextureKey(art, "front", false), art, "front", false),
-        () => this.makeMonsterArt(monsterTextureKey(art, "front", true), art, "front", true),
-        () => this.makeMonsterArt(monsterTextureKey(art, "back", false), art, "back", false),
-        () => this.makeMonsterArt(monsterTextureKey(art, "back", true), art, "back", true),
+        () =>
+          this.makeMonsterArt(
+            monsterTextureKey(art, "front", false),
+            art,
+            "front",
+            false,
+          ),
+        () =>
+          this.makeMonsterArt(
+            monsterTextureKey(art, "front", true),
+            art,
+            "front",
+            true,
+          ),
+        () =>
+          this.makeMonsterArt(
+            monsterTextureKey(art, "back", false),
+            art,
+            "back",
+            false,
+          ),
+        () =>
+          this.makeMonsterArt(
+            monsterTextureKey(art, "back", true),
+            art,
+            "back",
+            true,
+          ),
       );
     }
     tasks.push(
@@ -265,8 +307,24 @@ export class PreloadScene extends Phaser.Scene {
         for (let y = 0; y < t; y += cell) {
           for (let x = 0; x < t; x += cell) {
             const warp = (x / cell) % 2 === 0;
-            this.px(g, warp ? c.floorWeaveHi : c.floorWeaveLo, x, y, cell, 1, 0.5);
-            this.px(g, warp ? c.floorWeaveLo : c.floorWeaveHi, x, y, 1, cell, 0.5);
+            this.px(
+              g,
+              warp ? c.floorWeaveHi : c.floorWeaveLo,
+              x,
+              y,
+              cell,
+              1,
+              0.5,
+            );
+            this.px(
+              g,
+              warp ? c.floorWeaveLo : c.floorWeaveHi,
+              x,
+              y,
+              1,
+              cell,
+              0.5,
+            );
           }
         }
         break;
@@ -287,8 +345,10 @@ export class PreloadScene extends Phaser.Scene {
         // Pristine ceramic sub-tiles with thin grout lines — a real seamed
         // material, not a jarring two-colour checker.
         const cell = 16;
-        for (let y = 0; y <= t; y += cell) this.px(g, c.accent, 0, y, t, 1, 0.4);
-        for (let x = 0; x <= t; x += cell) this.px(g, c.accent, x, 0, 1, t, 0.4);
+        for (let y = 0; y <= t; y += cell)
+          this.px(g, c.accent, 0, y, t, 1, 0.4);
+        for (let x = 0; x <= t; x += cell)
+          this.px(g, c.accent, x, 0, 1, t, 0.4);
         break;
       }
     }
@@ -406,6 +466,47 @@ export class PreloadScene extends Phaser.Scene {
         this.px(g, c.accent, 0, 7, t, 1, 0.8);
         this.px(g, c.accent2, 0, 9, t, 1, 0.9);
         break;
+      case "brick": {
+        // Running-bond house brick: mortar lines every 8px, headers offset
+        // by half a brick on alternate courses, plus a pale window sill band.
+        for (let y = 0; y <= t; y += 8) {
+          this.px(g, c.wallDark, 0, y, t, 1, 0.55);
+          const offset = (y / 8) % 2 === 0 ? 0 : 8;
+          for (let x = offset; x < t; x += 16) {
+            this.px(g, c.wallDark, x, y, 1, 8, 0.45);
+          }
+        }
+        // A dark, curtained window with a pale frame — every house is lit
+        // exactly like this: not at all.
+        this.px(g, c.accent, 19, 9, 10, 1, 0.85);
+        this.px(g, c.accent, 19, 9, 1, 9, 0.85);
+        this.px(g, c.accent, 28, 9, 1, 9, 0.85);
+        this.px(g, c.accent, 19, 17, 10, 1, 0.85);
+        this.px(g, c.accent2, 20, 10, 8, 7, 0.95);
+        break;
+      }
+      case "party": {
+        // Streamer swags scalloping across the top, taped confetti dots
+        // everywhere below — festive at a glance, filthy up close.
+        for (let x = 0; x < t; x += 8) {
+          const streamer = (x / 8) % 2 === 0 ? c.accent : c.accent2;
+          this.px(g, streamer, x, 2, 4, 2, 0.9);
+          this.px(g, streamer, x + 4, 4, 4, 2, 0.9);
+        }
+        const dots: Array<[number, number, number]> = [
+          [6, 12, 0],
+          [14, 18, 1],
+          [24, 11, 1],
+          [27, 22, 0],
+          [10, 26, 1],
+          [19, 28, 0],
+          [4, 20, 0],
+        ];
+        for (const [dx, dy, which] of dots) {
+          this.px(g, which === 0 ? c.accent : c.accent2, dx, dy, 2, 2, 0.75);
+        }
+        break;
+      }
     }
 
     // Speckle grain — variant 1+ is noticeably filthier.
@@ -420,6 +521,7 @@ export class PreloadScene extends Phaser.Scene {
     }
 
     if (variant === 2) this.drawWallCreepyDetail(g, c);
+    if (variant === 3) this.drawWallCreepyDetail2(g, c);
   }
 
   /**
@@ -427,7 +529,10 @@ export class PreloadScene extends Phaser.Scene {
    * baked into variant 2 of every mask so it's rare (roughly a third of the
    * map's walls) rather than omnipresent.
    */
-  private drawWallCreepyDetail(g: Phaser.GameObjects.Graphics, c: StyleColorSet): void {
+  private drawWallCreepyDetail(
+    g: Phaser.GameObjects.Graphics,
+    c: StyleColorSet,
+  ): void {
     const t = TILE_SIZE;
     switch (c.wallPattern) {
       case "wallpaper": {
@@ -462,7 +567,13 @@ export class PreloadScene extends Phaser.Scene {
       }
       case "tile": {
         // A hairline crack, and a faint algae smear near the grout.
-        const crack: Array<[number, number]> = [[6, 4], [9, 9], [7, 14], [11, 19], [9, 25]];
+        const crack: Array<[number, number]> = [
+          [6, 4],
+          [9, 9],
+          [7, 14],
+          [11, 19],
+          [9, 25],
+        ];
         for (let i = 0; i < crack.length - 1; i++) {
           const [x0, y0] = crack[i]!;
           const [x1, y1] = crack[i + 1]!;
@@ -508,6 +619,145 @@ export class PreloadScene extends Phaser.Scene {
         this.px(g, c.wallDark, 10, 18, 3, 1, 0.6);
         this.px(g, c.wallDark, 20, 26, 4, 1, 0.6);
         this.px(g, c.wallDark, 22, 18, 2, 1, 0.5);
+        break;
+      }
+      case "brick": {
+        // One brick missing entirely — and the dark behind it is a room's
+        // worth of dark, not a brick's worth.
+        this.px(g, c.accent2, 8, 16, 8, 8, 1);
+        this.px(g, c.wallDark, 7, 15, 10, 1, 0.7);
+        this.px(g, c.wallDark, 7, 24, 10, 1, 0.7);
+        // Crumbled mortar dusting the course below.
+        this.px(g, c.wallSpeckleHi, 9, 25, 2, 1, 0.5);
+        this.px(g, c.wallSpeckleHi, 13, 26, 2, 1, 0.4);
+        break;
+      }
+      case "party": {
+        // A long dark stain running down from behind the streamers, and one
+        // balloon gone slack and wrinkled against the wall.
+        this.px(g, c.wallSpeckleLo, 14, 6, 3, 20, 0.45);
+        g.fillStyle(c.wallSpeckleLo, 0.35);
+        g.fillEllipse(15, 27, 8, 4);
+        g.fillStyle(c.accent, 0.55);
+        g.fillEllipse(25, 20, 6, 8);
+        this.px(g, c.wallDark, 24, 24, 1, 4, 0.6);
+        break;
+      }
+    }
+  }
+
+  /**
+   * The rarer second unsettling detail, baked into variant 3 (see
+   * {@link WALL_VARIANTS}) — where variant 2's mark is material damage,
+   * variant 3's is evidence: something wrote, dragged, scratched, or counted
+   * on this wall, recently.
+   */
+  private drawWallCreepyDetail2(
+    g: Phaser.GameObjects.Graphics,
+    c: StyleColorSet,
+  ): void {
+    const t = TILE_SIZE;
+    switch (c.wallPattern) {
+      case "wallpaper": {
+        // Tally marks scratched through the wallpaper — four strokes and a
+        // diagonal, then three more. Someone was counting days. It stops.
+        for (let i = 0; i < 4; i++) {
+          this.px(g, c.wallDark, 7 + i * 3, 8, 1, 8, 0.75);
+        }
+        this.px(g, c.wallDark, 6, 11, 12, 1, 0.7); // the diagonal slash
+        for (let i = 0; i < 3; i++) {
+          this.px(g, c.wallDark, 21 + i * 3, 8, 1, 8, 0.7);
+        }
+        break;
+      }
+      case "concrete": {
+        // A long drag smear descending toward the floor, ending in a
+        // smudged five-finger print. It was pulled, and it held on.
+        this.px(g, c.wallSpeckleLo, 12, 4, 3, 22, 0.4);
+        this.px(g, c.wallSpeckleLo, 14, 10, 2, 18, 0.3);
+        for (let i = 0; i < 4; i++) {
+          this.px(g, c.wallDark, 10 + i * 3, 26, 1, 4, 0.45);
+        }
+        break;
+      }
+      case "pipes": {
+        // Three claw rakes gouged straight through both pipe runs — metal
+        // and all. Whatever did it wasn't trying to be quiet.
+        for (let i = 0; i < 3; i++) {
+          const x = 12 + i * 4;
+          this.px(g, c.wallDark, x, 4, 1, 24, 0.8);
+          this.px(g, c.wallSpeckleHi, x + 1, 4, 1, 24, 0.25);
+        }
+        break;
+      }
+      case "tile": {
+        // A dark wet handprint at child height, half-slid down the glaze.
+        const hx = 18;
+        const hy = 18;
+        this.px(g, c.wallDark, hx, hy, 2, 5, 0.4);
+        this.px(g, c.wallDark, hx + 3, hy - 1, 2, 6, 0.4);
+        this.px(g, c.wallDark, hx + 6, hy, 2, 5, 0.38);
+        this.px(g, c.wallDark, hx - 1, hy + 4, 8, 4, 0.35);
+        this.px(g, c.wallDark, hx + 1, hy + 8, 5, 6, 0.22); // the slide down
+        break;
+      }
+      case "hazard": {
+        // A cluster of deep pockmarks stitched across the wall between the
+        // tape bands — something tested it, methodically, point by point.
+        const marks: Array<[number, number]> = [
+          [8, 14],
+          [13, 16],
+          [18, 13],
+          [23, 17],
+          [15, 20],
+          [20, 21],
+        ];
+        for (const [mx, my] of marks) {
+          this.px(g, c.wallDark, mx, my, 2, 2, 0.85);
+          this.px(g, c.wallSpeckleHi, mx, my - 1, 2, 1, 0.3);
+        }
+        break;
+      }
+      case "panels": {
+        // "NO VACANCY" energy without words: every panel's routed border
+        // scratched through on one side, low down — marked from below.
+        for (let x = 3; x < t; x += 16) {
+          this.px(g, c.wallDark, x, t - 12, 11, 1, 0.8);
+          this.px(g, c.wallDark, x + 2, t - 10, 8, 1, 0.6);
+        }
+        g.fillStyle(c.wallDark, 0.35);
+        g.fillEllipse(16, t - 6, 16, 4);
+        break;
+      }
+      case "steel": {
+        // A patch of plate scoured to bare bright metal in a tight circular
+        // grind — like something turned in place here, for a long time.
+        g.fillStyle(c.wallHi, 0.45);
+        g.fillEllipse(20, 14, 11, 10);
+        g.fillStyle(c.wall, 1);
+        g.fillEllipse(20, 14, 6, 5);
+        this.px(g, c.wallDark, 19, 13, 2, 2, 0.7);
+        break;
+      }
+      case "brick": {
+        // A chalk eye scrawled at shoulder height — the Neighborhood Watch's
+        // mark. The pupil is drawn looking to the side. Your side.
+        g.fillStyle(c.accent, 0.6);
+        g.fillEllipse(16, 15, 14, 8);
+        g.fillStyle(c.wall, 1);
+        g.fillEllipse(16, 15, 10, 5);
+        this.px(g, c.accent2, 19, 14, 3, 3, 0.9);
+        break;
+      }
+      case "party": {
+        // A banner scrap still taped up, both ends torn — and under it,
+        // dozens of tiny tally dots. Days? Guests? Both?
+        this.px(g, c.wallSpeckleHi, 6, 10, 20, 4, 0.8);
+        this.px(g, c.wallDark, 6, 10, 1, 4, 0.5);
+        this.px(g, c.wallDark, 25, 10, 1, 4, 0.5);
+        for (let i = 0; i < 8; i++) {
+          this.px(g, c.wallDark, 7 + i * 2.5, 18 + (i % 3), 1, 1, 0.6);
+        }
         break;
       }
     }
@@ -578,7 +828,13 @@ export class PreloadScene extends Phaser.Scene {
 
     // Jagged crack lines, forking from one corner toward the centre.
     const crack: Array<[number, number]> = [
-      [4, 2], [7, 6], [6, 11], [10, 15], [9, 20], [13, 24], [12, 29],
+      [4, 2],
+      [7, 6],
+      [6, 11],
+      [10, 15],
+      [9, 20],
+      [13, 24],
+      [12, 29],
     ];
     for (let i = 0; i < crack.length - 1; i++) {
       const [x0, y0] = crack[i]!;
@@ -723,7 +979,13 @@ export class PreloadScene extends Phaser.Scene {
       }
       case "crack": {
         // A flush hairline floor crack with a faint algae tinge.
-        const pts: Array<[number, number]> = [[6, 8], [10, 13], [8, 18], [14, 23], [12, 28]];
+        const pts: Array<[number, number]> = [
+          [6, 8],
+          [10, 13],
+          [8, 18],
+          [14, 23],
+          [12, 28],
+        ];
         for (let i = 0; i < pts.length - 1; i++) {
           const [x0, y0] = pts[i]!;
           const [x1, y1] = pts[i + 1]!;
@@ -805,6 +1067,59 @@ export class PreloadScene extends Phaser.Scene {
         }
         this.px(g, c.accent, 28, 14, 2, 2, 0.8);
         this.px(g, c.accent, 4, 27, 2, 2, 0.7);
+        break;
+      }
+      case "mailbox": {
+        // A kerbside mailbox on a wooden post, flag up. Nobody delivers
+        // here, but somehow it's never empty.
+        this.px(g, COLORS.propWoodDark, 15, 14, 2, 14, 1);
+        this.rr(g, COLORS.propMetal, 9, 8, 14, 8, 1);
+        this.px(g, COLORS.propMetalDark, 9, 8, 14, 2, 0.6);
+        this.px(g, COLORS.propMetalDark, 21, 10, 2, 4, 0.8);
+        // The little red flag, raised.
+        this.px(g, 0xc0392e, 7, 6, 2, 6, 1);
+        this.px(g, 0xc0392e, 7, 6, 4, 2, 1);
+        break;
+      }
+      case "hedge": {
+        // A squat trimmed hedge block — suburban topiary, kept neat by no
+        // one. The clippings underneath are always fresh.
+        this.rr(g, 0x2e4428, 6, 10, 20, 14, 1);
+        this.px(g, 0x3e5a34, 8, 11, 6, 3, 0.8);
+        this.px(g, 0x3e5a34, 18, 13, 5, 2, 0.7);
+        this.px(g, 0x1c2c18, 7, 20, 18, 3, 0.7);
+        this.px(g, 0x3e5a34, 12, 24, 3, 1, 0.5);
+        this.px(g, 0x3e5a34, 20, 25, 3, 1, 0.5);
+        break;
+      }
+      case "balloon": {
+        // A cluster of three balloons tied to a weight — still buoyant, the
+        // ribbon still taut. They've been "fresh" for a very long time.
+        this.px(g, COLORS.propMetalDark, 15, 24, 3, 3, 1);
+        this.px(g, COLORS.propWoodDark, 16, 12, 1, 12, 0.6);
+        this.px(g, COLORS.propWoodDark, 12, 14, 1, 10, 0.5);
+        this.px(g, COLORS.propWoodDark, 20, 14, 1, 10, 0.5);
+        g.fillStyle(0xd0568e, 1);
+        g.fillEllipse(11, 9, 8, 10);
+        g.fillStyle(0x4a8ec4, 1);
+        g.fillEllipse(21, 8, 8, 10);
+        g.fillStyle(0xe4c94a, 1);
+        g.fillEllipse(16, 5, 7, 9);
+        this.px(g, 0xffffff, 9, 6, 2, 2, 0.5);
+        this.px(g, 0xffffff, 19, 5, 2, 2, 0.5);
+        break;
+      }
+      case "cake": {
+        // A pristine slice of sheet cake on a paper plate, one candle lit.
+        // It is always fresh. That is the problem.
+        g.fillStyle(0xe8e4dc, 1);
+        g.fillEllipse(16, 22, 20, 8);
+        this.rr(g, 0xe8b0c8, 9, 12, 14, 9, 1);
+        this.px(g, 0xc94a72, 9, 15, 14, 2, 0.9);
+        this.px(g, 0xfff2f6, 9, 12, 14, 2, 0.9);
+        this.px(g, 0xf2e28a, 15, 6, 2, 6, 1);
+        this.px(g, 0xffc23a, 15, 4, 2, 2, 1);
+        this.px(g, 0xfff6cf, 15.5, 3, 1, 1, 0.9);
         break;
       }
     }
@@ -926,7 +1241,8 @@ export class PreloadScene extends Phaser.Scene {
     return {
       px: (color, x, y, w = 1, h = 1, alpha = 1) =>
         this.px(g, color, x, y, w, h, alpha),
-      rr: (color, x, y, w, h, alpha = 1) => this.rr(g, color, x, y, w, h, alpha),
+      rr: (color, x, y, w, h, alpha = 1) =>
+        this.rr(g, color, x, y, w, h, alpha),
       ellipse: (color, cx, cy, w, h, alpha = 1) => {
         g.fillStyle(color, alpha);
         g.fillEllipse(cx, cy, w, h);
@@ -945,7 +1261,13 @@ export class PreloadScene extends Phaser.Scene {
   ): void {
     const s = PLAYER.size;
     const g = this.make.graphics({ x: 0, y: 0 }, false);
-    paintPlayerSprite(this.paintSurfaceFor(g), facing, stride, palette, accessory);
+    paintPlayerSprite(
+      this.paintSurfaceFor(g),
+      facing,
+      stride,
+      palette,
+      accessory,
+    );
     g.generateTexture(key, s, s);
     g.destroy();
   }
@@ -997,6 +1319,15 @@ export class PreloadScene extends Phaser.Scene {
       case "partygoer":
         this.drawPartygoer(g, s, facing, stride);
         break;
+      case "watcher":
+        this.drawWatcher(g, s, facing, stride);
+        break;
+      case "clump":
+        this.drawClump(g, s, facing, stride);
+        break;
+      case "beast":
+        this.drawBeast(g, s, facing, stride);
+        break;
     }
 
     g.generateTexture(key, s, s);
@@ -1017,7 +1348,6 @@ export class PreloadScene extends Phaser.Scene {
     facing: Facing,
     stride: boolean,
   ): void {
-
     // Long, two-jointed arms hanging well past the knees, bent outward at
     // the elbow — offset opposite ways for the stride frame so the lurch
     // reads as alternating steps. Drawn before the torso so the shoulders
@@ -1032,7 +1362,15 @@ export class PreloadScene extends Phaser.Scene {
     this.px(g, COLORS.monsterBodyShade, s - 7, 34 + limbShift, 5, 3, 0.9);
     for (let i = 0; i < 3; i++) {
       this.px(g, COLORS.monsterEyeGlow, 2 + i * 2, 37 - limbShift, 1, 2, 0.7);
-      this.px(g, COLORS.monsterEyeGlow, s - 7 + i * 2, 37 + limbShift, 1, 2, 0.7);
+      this.px(
+        g,
+        COLORS.monsterEyeGlow,
+        s - 7 + i * 2,
+        37 + limbShift,
+        1,
+        2,
+        0.7,
+      );
     }
 
     // Bald, oversized skull.
@@ -1430,7 +1768,15 @@ export class PreloadScene extends Phaser.Scene {
     g.fillEllipse(22, 16, 22, 18);
     // Spine knuckles cresting the hump.
     for (let i = 0; i < 4; i++) {
-      this.rr(g, COLORS.monsterBodyShade, 15 + i * 5, 6 + Math.abs(i - 1), 4, 3, 0.8);
+      this.rr(
+        g,
+        COLORS.monsterBodyShade,
+        15 + i * 5,
+        6 + Math.abs(i - 1),
+        4,
+        3,
+        0.8,
+      );
     }
     // Exposed rib shadows raking the flank.
     for (let i = 0; i < 4; i++) {
@@ -1530,6 +1876,181 @@ export class PreloadScene extends Phaser.Scene {
     // Little feet peeking out under the body.
     this.px(g, MART.partyShade, 14, 36 - shift, 5, 3, 1);
     this.px(g, MART.partyShade, 21, 36 + shift, 5, 3, 1);
+  }
+
+  /**
+   * The Watcher (the Neighborhood Watch, wiki level-9): a too-tall figure in
+   * a buttoned dark coat, hands folded, with two enormous lidless white eyes
+   * that take up half the face — the porch silhouette that was already
+   * looking at you. Back view: the coat, the collar, and no eyes at all,
+   * which somehow doesn't mean it can't see you.
+   */
+  private drawWatcher(
+    g: Phaser.GameObjects.Graphics,
+    s: number,
+    facing: Facing,
+    stride: boolean,
+  ): void {
+    const shift = stride ? 1 : 0;
+
+    // Long straight coat body first — narrow, floor-length, buttoned.
+    this.rr(g, COLORS.playerOutline, 12, 14, 16, 24, 1);
+    this.rr(g, MART.watcherCoat, 13, 15, 14, 22, 1);
+    this.px(g, MART.watcherCoatHi, 14, 15, 2, 21, 0.4);
+    if (facing === "front") {
+      // Button line down the coat's front seam.
+      for (let i = 0; i < 5; i++) {
+        this.px(g, MART.watcherCoatHi, 19.5, 17 + i * 4, 1, 1, 0.8);
+      }
+    } else {
+      // A single back vent seam.
+      this.px(g, COLORS.playerOutline, 19.5, 20, 1, 17, 0.5);
+    }
+
+    // Arms held dead straight, gloved hands folded in front at the waist.
+    this.px(g, MART.watcherCoat, 10, 16 + shift, 3, 13, 1);
+    this.px(g, MART.watcherCoat, 27, 16 - shift, 3, 13, 1);
+    if (facing === "front") {
+      this.px(g, COLORS.monsterEye, 16, 27, 8, 3, 0.9);
+    }
+
+    // Head: a long pale oval on a high collar.
+    this.px(g, MART.watcherCoat, 16, 12, 8, 3, 1);
+    g.fillStyle(COLORS.playerOutline, 1);
+    g.fillEllipse(s / 2, 7, 15, 14);
+    g.fillStyle(COLORS.monsterBody, 1);
+    g.fillEllipse(s / 2, 7, 13, 12);
+
+    if (facing === "front") {
+      // The eyes. Far too big, perfectly round, never blinking — with
+      // pinprick pupils fixed dead ahead.
+      g.fillStyle(COLORS.playerOutline, 1);
+      g.fillEllipse(15.5, 7, 8, 9);
+      g.fillEllipse(24.5, 7, 8, 9);
+      g.fillStyle(MART.watcherEye, 1);
+      g.fillEllipse(15.5, 7, 6.5, 7.5);
+      g.fillEllipse(24.5, 7, 6.5, 7.5);
+      this.px(g, COLORS.monsterEye, 15, 7, 2, 2, 1);
+      this.px(g, COLORS.monsterEye, 24, 7, 2, 2, 1);
+      // No mouth. Nothing else. Just the eyes.
+    } else {
+      // Featureless from behind, bar a faint scalp seam.
+      this.px(g, COLORS.monsterBodyShade, 19.5, 2, 1, 9, 0.4);
+    }
+  }
+
+  /**
+   * The Clump (wiki entity-5): not a body — a floating knot of fused limbs
+   * and torsos, arms jutting at angles that don't share one owner, bound by
+   * dark sinew. It drifts (no walk cycle); the stride frame just rotates
+   * which limbs hang lowest.
+   */
+  private drawClump(
+    g: Phaser.GameObjects.Graphics,
+    s: number,
+    facing: Facing,
+    stride: boolean,
+  ): void {
+    const roll = stride ? 2 : 0;
+
+    // The core mass: overlapping flesh lobes, deliberately lumpy.
+    g.fillStyle(COLORS.playerOutline, 1);
+    g.fillEllipse(s / 2, 18, 26, 22);
+    g.fillStyle(MART.clumpFlesh, 1);
+    g.fillEllipse(s / 2 - 3, 16, 16, 14);
+    g.fillEllipse(s / 2 + 5, 20 + roll * 0.5, 14, 13);
+    g.fillStyle(MART.clumpFleshHi, 0.8);
+    g.fillEllipse(s / 2 - 5, 13, 8, 7);
+    g.fillStyle(MART.clumpFleshShade, 0.8);
+    g.fillEllipse(s / 2 + 6, 24, 10, 8);
+
+    // Sinew bands cinching the lobes together.
+    this.px(g, MART.clumpSinew, 8, 17, 24, 2, 0.8);
+    this.px(g, MART.clumpSinew, 14, 9, 2, 20, 0.7);
+    this.px(g, MART.clumpSinew, 24, 12, 2, 16, 0.6);
+
+    // Limbs jutting out of the mass — arms where arms shouldn't start,
+    // one leg that ends mid-air. Alternate pair hangs lower on the stride.
+    this.px(g, COLORS.monsterLimb, 3, 12 - roll, 6, 3, 1); // arm, left out
+    this.px(g, COLORS.monsterBodyShade, 1, 11 - roll, 3, 2, 0.9); // its hand
+    this.px(g, COLORS.monsterLimb, 31, 16 + roll, 7, 3, 1); // arm, right out
+    this.px(g, COLORS.monsterBodyShade, 36, 15 + roll, 3, 2, 0.9);
+    this.px(g, COLORS.monsterLimb, 12, 28 + roll, 3, 9, 1); // hanging leg
+    this.px(g, COLORS.monsterLimb, 22, 29 - roll, 3, 8, 1); // second leg
+    this.px(g, COLORS.monsterLimb, 26, 4 - roll, 3, 7, 1); // arm reaching UP
+
+    if (facing === "front") {
+      // One face surfaced in the mass, eyes shut, mouth slack — asleep, or
+      // worse, at peace.
+      g.fillStyle(COLORS.monsterBody, 1);
+      g.fillEllipse(15, 20, 9, 8);
+      this.px(g, COLORS.monsterBodyShade, 12, 19, 3, 1, 0.9);
+      this.px(g, COLORS.monsterBodyShade, 17, 19, 3, 1, 0.9);
+      this.px(g, COLORS.monsterMawShade, 13, 23, 5, 1, 0.8);
+    } else {
+      // From behind: just more limbs. There is no back. That's the point.
+      this.px(g, COLORS.monsterLimb, 17, 6 - roll, 3, 6, 1);
+      this.px(g, COLORS.monsterBodyShade, 17, 4 - roll, 3, 2, 0.9);
+    }
+  }
+
+  /**
+   * The Beast of Level 5 (wiki entity-21): a tall horned silhouette that is
+   * mostly negative space — long curved horns, a smear of near-black body,
+   * two ember eyes, and far too much arm. Back view is the horns and the
+   * dark, and that's already too much information.
+   */
+  private drawBeast(
+    g: Phaser.GameObjects.Graphics,
+    s: number,
+    facing: Facing,
+    stride: boolean,
+  ): void {
+    const shift = stride ? 1 : 0;
+
+    // Long clawed arms first, hanging to the floor, so the body overlaps.
+    this.px(g, MART.beastBody, 6, 16 - shift, 3, 16, 1);
+    this.px(g, MART.beastBody, 31, 16 + shift, 3, 16, 1);
+    for (let i = 0; i < 3; i++) {
+      this.px(g, MART.beastHorn, 5 + i * 2, 32 - shift, 1, 3, 0.8);
+      this.px(g, MART.beastHorn, 30 + i * 2, 32 + shift, 1, 3, 0.8);
+    }
+
+    // Smoked, tapering body mass — soft edges, like it isn't fully here.
+    g.fillStyle(MART.beastBody, 0.6);
+    g.fillEllipse(s / 2, 24, 22, 26);
+    g.fillStyle(MART.beastBody, 0.95);
+    g.fillEllipse(s / 2, 22, 16, 22);
+    this.px(g, MART.beastBodyHi, 14, 14, 3, 12, 0.35);
+
+    // Narrow skull between the shoulders.
+    g.fillStyle(MART.beastBody, 1);
+    g.fillEllipse(s / 2, 10, 13, 11);
+
+    // The horns — long, swept, pale against everything else in the game.
+    g.fillStyle(MART.beastHorn, 1);
+    g.fillTriangle(13, 8, 6, -2, 16, 5);
+    g.fillTriangle(27, 8, 34, -2, 24, 5);
+    this.px(g, MART.beastBodyHi, 8, 0, 2, 3, 0.5);
+
+    if (facing === "front") {
+      // Ember eyes, slightly uneven heights — nothing symmetrical lives here.
+      this.px(g, MART.beastEye, 16, 9, 3, 2, 1);
+      this.px(g, MART.beastEye, 23, 10, 3, 2, 1);
+      this.px(g, 0xfff0c0, 17, 9, 1, 1, 0.9);
+      this.px(g, 0xfff0c0, 24, 10, 1, 1, 0.9);
+      // A thin under-lit jaw line.
+      this.px(g, MART.beastBodyHi, 17, 14, 6, 1, 0.4);
+    } else {
+      // From behind: the faint spine ridge and the horn backs.
+      for (let i = 0; i < 4; i++) {
+        this.px(g, MART.beastBodyHi, 19, 14 + i * 5, 2, 2, 0.35);
+      }
+    }
+
+    // Digitigrade legs, barely resolved out of the body smoke.
+    this.px(g, MART.beastBody, 15, 33 - shift, 4, 6, 1);
+    this.px(g, MART.beastBody, 22, 33 + shift, 4, 6, 1);
   }
 
   /**

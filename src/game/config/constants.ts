@@ -9,6 +9,9 @@ import {
   DULLER_TUNING,
   WRETCH_TUNING,
   PARTYGOER_TUNING,
+  WATCHER_TUNING,
+  CLUMP_TUNING,
+  BEAST_TUNING,
   type MonsterKind,
   type MonsterTuning,
 } from "@/game/ai/types";
@@ -258,6 +261,28 @@ export const FEAR = {
   vignetteFeather: 0.4,
 } as const;
 
+/**
+ * The mega-scare: a rare full-screen face-slam — the level's own entity
+ * filling the whole viewport for a beat, with the loudest scream in the kit.
+ * Deliberately scarce (long minimum gap, hard per-run cap) and gated to fire
+ * only while ambient fear is LOW: the shock lands hardest out of calm, and
+ * rationing it keeps it terrifying instead of routine.
+ */
+export const MEGA_SCARE = {
+  /** Earliest a mega-scare can fire after level start / the previous one. */
+  minIntervalMs: 70000,
+  maxIntervalMs: 150000,
+  /** Hard cap per run — twice, ever, so it never becomes wallpaper. */
+  maxPerRun: 2,
+  /** Fear ceiling: above this the player is already tense, so the beat is
+   *  postponed (re-rolled a short delay later) rather than wasted. */
+  maxFear: 0.45,
+  /** How long the face owns the screen before it rips away. */
+  holdMs: 420,
+  /** Re-roll delay when the fear gate postpones a due scare (ms). */
+  retryMs: 9000,
+} as const;
+
 /** Random ambient power-flicker beat: the lights gutter and the fog swallows
  *  the room for a moment — pure atmosphere, no monster required. */
 export const BLACKOUT_EVENT = {
@@ -323,6 +348,8 @@ export const FLASHLIGHT = {
  *   hazard     — Level 4, Run For Your Life: scorched concrete, hazard tape.
  *   hotel      — Level 5, The Terror Hotel: dark mahogany panelling, red carpet.
  *   lightsout  — Level 6, Lights Out: riveted steel plate in near-total dark.
+ *   suburbs    — Level 9, The Suburbs: night streets, brick facades, asphalt.
+ *   fun        — Level Fun =): streamer-strung party walls, stained confetti.
  * Drives which baked wall/floor/exit textures a level uses (see
  * {@link TEXTURES}).
  */
@@ -334,13 +361,23 @@ export const LEVEL_STYLES = [
   "hazard",
   "hotel",
   "lightsout",
+  "suburbs",
+  "fun",
 ] as const;
 export type LevelStyle = (typeof LEVEL_STYLES)[number];
 
 /** Which decorative layer {@link StyleColorSet} draws on top of the base wall
  *  fill — the thing that makes each level's material read distinctly. */
 export type WallPattern =
-  "wallpaper" | "concrete" | "pipes" | "tile" | "hazard" | "panels" | "steel";
+  | "wallpaper"
+  | "concrete"
+  | "pipes"
+  | "tile"
+  | "hazard"
+  | "panels"
+  | "steel"
+  | "brick"
+  | "party";
 /** Which pattern {@link StyleColorSet} draws for a level's floor. */
 export type FloorPattern = "weave" | "concrete" | "tile";
 
@@ -387,9 +424,11 @@ export interface StyleColorSet {
 
 /** How many baked variants exist per wall (style, mask) and per floor style —
  *  variant 0 is always the clean baseline; the rest layer in extra grime and
- *  one deliberately unsettling detail (see {@link PreloadScene}) so a level
- *  doesn't read as one texture stamped everywhere. */
-export const WALL_VARIANTS = 3;
+ *  a deliberately unsettling detail (see {@link PreloadScene}): variant 2 is
+ *  the material-specific damage/stain, variant 3 the rarer "something was
+ *  here" mark (graffiti, a drag smear, claw rakes) — so a level doesn't read
+ *  as one texture stamped everywhere. */
+export const WALL_VARIANTS = 4;
 export const FLOOR_VARIANTS = 3;
 
 /** Small scattered set-dressing props, two per style — pure decoration
@@ -408,7 +447,11 @@ export type PropKind =
   | "luggage"
   | "lamp"
   | "fusebox"
-  | "cable";
+  | "cable"
+  | "mailbox"
+  | "hedge"
+  | "balloon"
+  | "cake";
 
 export const STYLE_PROPS: Record<LevelStyle, readonly [PropKind, PropKind]> = {
   lobby: ["chair", "boxes"],
@@ -418,6 +461,8 @@ export const STYLE_PROPS: Record<LevelStyle, readonly [PropKind, PropKind]> = {
   hazard: ["sign", "scorchpile"],
   hotel: ["luggage", "lamp"],
   lightsout: ["fusebox", "cable"],
+  suburbs: ["mailbox", "hedge"],
+  fun: ["balloon", "cake"],
 };
 
 /** Tuning for ambient decoration/collectible scatter — see MainScene's
@@ -629,6 +674,56 @@ export const STYLE_COLORS: Record<LevelStyle, StyleColorSet> = {
     accent2: 0x101216,
     monsterMood: 0x9aa4b8,
   },
+  // Level 9 "The Suburbs" — an endless residential street at permanent 3 AM:
+  // cracked asphalt underfoot, dark brick facades, every porch light dead.
+  // Wiki: the houses are furnished and no one is home. No one should be.
+  suburbs: {
+    seed: 6701,
+    floor: 0x33363c,
+    floorWeaveHi: 0x42454c,
+    floorWeaveLo: 0x24262b,
+    floorStain: 0x121316,
+    wall: 0x5c3a30,
+    wallStripe: 0x4a2e26,
+    wallStripeGap: 8,
+    wallHi: 0x7c5244,
+    wallHi2: 0x6c4638,
+    wallShade: 0x3c251e,
+    wallShade2: 0x4a2e26,
+    wallDark: 0x221410,
+    wallSpeckleHi: 0x8a5e4c,
+    wallSpeckleLo: 0x1c100c,
+    wallPattern: "brick",
+    floorPattern: "concrete",
+    accent: 0xb8c4d8, // dead-streetlamp pale — window frames and sills
+    accent2: 0x14181f,
+    monsterMood: 0xaebadb,
+  },
+  // "Level Fun =)" — the Partygoers' level: crayon-bright streamer walls and
+  // confetti underfoot, all of it slightly grubby, none of it recent. Wiki:
+  // the balloons never deflate and the cake is always fresh. Don't eat it.
+  fun: {
+    seed: 7801,
+    floor: 0xb99f62,
+    floorWeaveHi: 0xd0b878,
+    floorWeaveLo: 0x947c48,
+    floorStain: 0x5c4426,
+    wall: 0xd8c47a,
+    wallStripe: 0xc4ae62,
+    wallStripeGap: 8,
+    wallHi: 0xf0e0a0,
+    wallHi2: 0xe4d28c,
+    wallShade: 0xa88f52,
+    wallShade2: 0xbca862,
+    wallDark: 0x6e5a2e,
+    wallSpeckleHi: 0xf6ecb8,
+    wallSpeckleLo: 0x64522a,
+    wallPattern: "party",
+    floorPattern: "weave",
+    accent: 0xd0568e, // streamer pink
+    accent2: 0x4a8ec4, // streamer blue
+    monsterMood: 0xffe88a,
+  },
 } as const;
 
 export const COLORS = {
@@ -744,7 +839,10 @@ export type MonsterArt =
   | "deathmoth"
   | "duller"
   | "wretch"
-  | "partygoer";
+  | "partygoer"
+  | "watcher"
+  | "clump"
+  | "beast";
 
 /** Which art set each kind's textures use. Every art listed here is baked
  *  once (4 frames) at preload; kinds resolve through this so the pursuer and
@@ -760,6 +858,9 @@ export const MONSTER_ART: Record<MonsterKind, MonsterArt> = {
   duller: "duller",
   wretch: "wretch",
   partygoer: "partygoer",
+  watcher: "watcher",
+  clump: "clump",
+  beast: "beast",
 } as const;
 
 export const MONSTER_ARTS: readonly MonsterArt[] = [
@@ -772,6 +873,9 @@ export const MONSTER_ARTS: readonly MonsterArt[] = [
   "duller",
   "wretch",
   "partygoer",
+  "watcher",
+  "clump",
+  "beast",
 ];
 
 /** Monster texture keys are generated per art set (front/back × idle/stride),
@@ -802,6 +906,9 @@ export const MONSTER_TINT = {
   duller: 0xaab2c0, // washed-out slate grey — a figure with the colour drained
   wretch: 0xc4b8a8, // grave-pale with old bloodstains baked into the art
   partygoer: 0xfff2a0, // party-balloon yellow — cheerful in the worst way
+  watcher: 0xdde4f2, // porch-light pale — the neighbour that was never a neighbour
+  clump: 0xc9a08e, // old-meat pink-grey — a knot of limbs that shouldn't add up
+  beast: 0x8a7690, // bruise-violet shadow — the thing below the hotel
 } as const;
 
 /**
@@ -876,7 +983,11 @@ export const MONSTER_KIND_CONFIG: Record<MonsterKind, MonsterKindConfig> = {
     tint: MONSTER_TINT.smiler,
     chaseSpeedMultiplier: 1.18,
   },
-  faceling: { tuning: FACELING_TUNING, tint: MONSTER_TINT.faceling, harmless: true },
+  faceling: {
+    tuning: FACELING_TUNING,
+    tint: MONSTER_TINT.faceling,
+    harmless: true,
+  },
   skinstealer: {
     tuning: SKINSTEALER_TUNING,
     tint: MONSTER_TINT.skinstealer,
@@ -917,6 +1028,32 @@ export const MONSTER_KIND_CONFIG: Record<MonsterKind, MonsterKindConfig> = {
     tuning: PARTYGOER_TUNING,
     tint: MONSTER_TINT.partygoer,
     chaseSpeedMultiplier: 1.12,
+  },
+  // The Neighborhood Watch (wiki level-9) — tall, unblinking, and already
+  // looking at you when you spot it. Long sight, hard committed chase.
+  watcher: {
+    tuning: WATCHER_TUNING,
+    tint: MONSTER_TINT.watcher,
+    scale: { x: 0.96, y: 1.12 },
+    chaseSpeedMultiplier: 1.15,
+  },
+  // The Clump (wiki entity-5) — a drifting knot of fused limbs. It glides
+  // (no walk cycle: nothing about it walks) and never hurries; the horror is
+  // that it also never, ever stops.
+  clump: {
+    tuning: CLUMP_TUNING,
+    tint: MONSTER_TINT.clump,
+    scale: { x: 1.12, y: 0.96 },
+    noWalkCycle: true,
+    chaseSpeedMultiplier: 0.55,
+  },
+  // The Beast of Level 5 (wiki entity-21) — the horned shadow from below the
+  // hotel. The fastest chase of any roster kind; if it commits, you sprint.
+  beast: {
+    tuning: BEAST_TUNING,
+    tint: MONSTER_TINT.beast,
+    scale: { x: 1.06, y: 1.16 },
+    chaseSpeedMultiplier: 1.35,
   },
 } as const;
 

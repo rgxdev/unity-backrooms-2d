@@ -15,6 +15,8 @@ import {
   FLOOR_VARIANTS,
   JUMPSCARE,
   LORE_PICKUP,
+  MEGA_SCARE,
+  MONSTER,
   MONSTER_ART,
   MONSTER_KIND_CONFIG,
   type MonsterKindConfig,
@@ -47,7 +49,10 @@ import {
   type LevelTheme,
 } from "@/game/levels";
 import { pickMonsterKind } from "@/game/levels/roster";
-import { addSoftVignette, SoftVignetteController } from "@/game/fx/SoftVignette";
+import {
+  addSoftVignette,
+  SoftVignetteController,
+} from "@/game/fx/SoftVignette";
 import { Player } from "@/game/entities/Player";
 import { Monster } from "@/game/entities/Monster";
 import { PlayerController } from "@/game/systems/PlayerController";
@@ -187,6 +192,12 @@ export class MainScene extends Phaser.Scene {
 
   /** Random ambient power-flicker beat — pure atmosphere. */
   private nextBlackoutAt = -1;
+
+  /** The rare full-screen mega-scare (see MEGA_SCARE): next eligible time
+   *  and how many have fired this run — hard-capped so it stays a shock,
+   *  never a rhythm. */
+  private megaScareNextAt = -1;
+  private megaScareCount = 0;
 
   /** Camera post-processing (WebGL only — no-ops gracefully otherwise). */
   private vignetteFilter: SoftVignetteController | null = null;
@@ -375,6 +386,8 @@ export class MainScene extends Phaser.Scene {
     this.stalkerAI.reset();
     this.stalkerMonster = null;
     this.nextBlackoutAt = -1;
+    this.megaScareNextAt = -1;
+    this.megaScareCount = 0;
     this.vignetteFilter = null;
     this.barrelFilter = null;
     this.camZoom = this.baseZoom;
@@ -453,6 +466,14 @@ export class MainScene extends Phaser.Scene {
       if (n < 0.55) return 0;
       if (n < 0.85) return 1;
       return 2;
+    }
+    if (count === 4) {
+      // Two creepy-detail variants (2: material damage, 3: "something was
+      // here" evidence) share the rare tail so each stays a genuine find.
+      if (n < 0.52) return 0;
+      if (n < 0.82) return 1;
+      if (n < 0.91) return 2;
+      return 3;
     }
     return Math.min(count - 1, Math.floor(n * count));
   }
@@ -857,7 +878,10 @@ export class MainScene extends Phaser.Scene {
     const cy = cam.height / 2;
 
     const ui = this.add.container(cx * (1 - 1 / zoom), cy * (1 - 1 / zoom));
-    ui.setScrollFactor(0).setDepth(800).setScale(1 / zoom).setVisible(false);
+    ui.setScrollFactor(0)
+      .setDepth(800)
+      .setScale(1 / zoom)
+      .setVisible(false);
 
     this.loreVeil = this.add
       .rectangle(0, 0, cam.width, cam.height, 0x03030a, 0)
@@ -968,10 +992,7 @@ export class MainScene extends Phaser.Scene {
         nearestIndex = i;
       }
     }
-    if (
-      nearestIndex >= 0 &&
-      Phaser.Input.Keyboard.JustDown(this.interactKey)
-    ) {
+    if (nearestIndex >= 0 && Phaser.Input.Keyboard.JustDown(this.interactKey)) {
       this.openLore(nearestIndex);
     }
   }
@@ -1573,7 +1594,96 @@ export class MainScene extends Phaser.Scene {
         break;
     }
 
-    this.updateFear(this.computeFear(playerPos), time);
+    const fear = this.computeFear(playerPos);
+    this.updateFear(fear, time);
+    if (this.phase === GamePhase.Ambient) this.updateMegaScare(time, fear);
+  }
+
+  /**
+   * Schedules and gates the mega-scare (see {@link MEGA_SCARE}): only during
+   * calm — low ambient fear, no document open — because a face-slam mid-chase
+   * is wasted, and only rarely, because a rationed scare is the only kind
+   * that stays scary. Postponed (not skipped) when the fear gate blocks it.
+   */
+  private updateMegaScare(time: number, fear: number): void {
+    if (this.megaScareCount >= MEGA_SCARE.maxPerRun) return;
+    if (this.megaScareNextAt < 0) {
+      this.megaScareNextAt =
+        time +
+        Phaser.Math.Between(MEGA_SCARE.minIntervalMs, MEGA_SCARE.maxIntervalMs);
+      return;
+    }
+    if (time < this.megaScareNextAt) return;
+    if (fear > MEGA_SCARE.maxFear || this.loreReading) {
+      this.megaScareNextAt = time + MEGA_SCARE.retryMs;
+      return;
+    }
+    this.megaScareCount += 1;
+    this.megaScareNextAt =
+      time +
+      Phaser.Math.Between(MEGA_SCARE.minIntervalMs, MEGA_SCARE.maxIntervalMs);
+    this.triggerMegaScare();
+  }
+
+  /**
+   * The mega-scare itself: the level's own entity slammed across the entire
+   * viewport over a black veil, with the loudest scream in the kit, a hard
+   * shake and a barrel punch — then gone. Bigger and longer than the
+   * subliminal "flash" anomaly by an order of magnitude; that one plants
+   * doubt, this one is the payoff.
+   */
+  private triggerMegaScare(): void {
+    const cam = this.cameras.main;
+    const kind = pickMonsterKind(Math.random, this.levelIndex);
+
+    // scrollFactor(0) cancels scroll but not the camera's zoom-about-centre
+    // transform (see buildLoreReader) — centre-anchored objects stay centred,
+    // but on-screen size is texture * scale * zoom, so divide zoom back out.
+    const veil = this.add
+      .rectangle(0, 0, cam.width * 2, cam.height * 2, 0x000000, 0)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(1599);
+    const face = this.add
+      .image(
+        cam.width / 2,
+        cam.height / 2,
+        monsterTextureKey(MONSTER_ART[kind], "front", false),
+      )
+      .setScrollFactor(0)
+      .setDepth(1600)
+      .setAlpha(0)
+      .setTint(0xb01008)
+      .setScale(((cam.height / MONSTER.size) * 1.15) / cam.zoom);
+
+    this.audio.scream(1, 0);
+    this.audio.staticBurst(0.5);
+    this.cameras.main.shake(MEGA_SCARE.holdMs + 250, 0.02);
+    this.pulseBarrel(1.2, MEGA_SCARE.holdMs + 150);
+
+    this.tweens.add({
+      targets: veil,
+      alpha: { from: 0, to: 0.88 },
+      duration: 50,
+      yoyo: true,
+      hold: MEGA_SCARE.holdMs,
+      onComplete: () => veil.destroy(),
+    });
+    this.tweens.add({
+      targets: face,
+      alpha: { from: 0, to: 1 },
+      duration: 45,
+      yoyo: true,
+      hold: MEGA_SCARE.holdMs,
+      onComplete: () => face.destroy(),
+    });
+    // The face doesn't sit still — it creeps closer for the whole hold.
+    this.tweens.add({
+      targets: face,
+      scale: face.scale * 1.18,
+      duration: MEGA_SCARE.holdMs + 140,
+      ease: "Sine.In",
+    });
   }
 
   private onPhaseChange(phase: GamePhase): void {
@@ -1871,7 +1981,8 @@ export class MainScene extends Phaser.Scene {
       // radius, plus its small bonus band) so both gaze mechanics agree on
       // what "the player can see it" means.
       const gazed =
-        tileDist <= VISIBILITY.revealRadiusTiles + STALKER.visRadiusBonusTiles &&
+        tileDist <=
+          VISIBILITY.revealRadiusTiles + STALKER.visRadiusBonusTiles &&
         this.visibility.hasLineOfSight(
           playerTile.x,
           playerTile.y,
@@ -1936,10 +2047,7 @@ export class MainScene extends Phaser.Scene {
       if (m.distanceTo(playerPos) > DEATHMOTH.grazeRadius) continue;
       const cooldownUntil = this.deathmothGrazeCooldownUntil.get(m) ?? 0;
       if (time < cooldownUntil) continue;
-      this.deathmothGrazeCooldownUntil.set(
-        m,
-        time + DEATHMOTH.grazeCooldownMs,
-      );
+      this.deathmothGrazeCooldownUntil.set(m, time + DEATHMOTH.grazeCooldownMs);
       this.onDeathmothGraze(m);
     }
   }
@@ -2125,7 +2233,7 @@ export class MainScene extends Phaser.Scene {
     // Louder the closer it is.
     const closeness = 1 - nearest / DREAD.presenceRadius;
     const nearestKind = nearestMonster
-      ? this.monsterKinds.get(nearestMonster) ?? "lurker"
+      ? (this.monsterKinds.get(nearestMonster) ?? "lurker")
       : "lurker";
     if (MONSTER_KIND_CONFIG[nearestKind].presenceCue === "bark") {
       this.audio.bark(0.3 + closeness * 0.45);
@@ -2595,13 +2703,38 @@ export class MainScene extends Phaser.Scene {
         this.pulseBarrel(0.3, 340);
         break;
       }
+      case "scratch": {
+        // Nails dragged along the far side of a wall — moving, unhurried.
+        const pan = Math.random() < 0.5 ? -0.6 : 0.6;
+        this.audio.scratch(pan);
+        this.cameras.main.shake(70, 0.001);
+        break;
+      }
       case "shadow":
         this.triggerShadowDart();
+        break;
+      case "humstop":
+        this.triggerHumStop();
         break;
       case "lightsout":
         this.triggerLightsOut();
         break;
     }
+  }
+
+  /**
+   * The one constant of the Backrooms — the fluorescent hum — just stops.
+   * No sting, no flash: the scare IS the silence, held a few seconds and
+   * capped with a single close breath right before the drone kicks back in.
+   * (Anyone who's read a single survival log knows what silence means.)
+   */
+  private triggerHumStop(): void {
+    this.audio.stopHum();
+    const silenceMs = 2600 + Math.random() * 2200;
+    this.time.delayedCall(silenceMs - 450, () => {
+      if (!this.ended) this.audio.breath(0.26, Math.random() * 0.8 - 0.4);
+    });
+    this.time.delayedCall(silenceMs, () => this.audio.startHum());
   }
 
   /**
@@ -2618,9 +2751,11 @@ export class MainScene extends Phaser.Scene {
       const dist = Phaser.Math.FloatBetween(3, 5.5);
       const tx = Math.round(origin.x + Math.cos(angle) * dist);
       const ty = Math.round(origin.y + Math.sin(angle) * dist);
-      if (tx < 0 || ty < 0 || tx >= this.level.width || ty >= this.level.height) continue;
+      if (tx < 0 || ty < 0 || tx >= this.level.width || ty >= this.level.height)
+        continue;
       if (this.isWallTile(tx, ty) || this.isHoleTile(tx, ty)) continue;
-      if (!this.visibility.hasLineOfSight(origin.x, origin.y, tx, ty, isWall)) continue;
+      if (!this.visibility.hasLineOfSight(origin.x, origin.y, tx, ty, isWall))
+        continue;
 
       const kind = pickMonsterKind(Math.random, this.levelIndex);
       const c = this.centreOf(tx, ty);

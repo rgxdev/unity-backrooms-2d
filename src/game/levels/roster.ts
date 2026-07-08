@@ -59,31 +59,58 @@ export const LEVEL_MONSTER_ROSTER: Record<number, readonly RosterEntry[]> = {
     { kind: "skinstealer", weight: 0.15 },
   ],
   2: [
-    { kind: "lurker", weight: 0.3 },
-    { kind: "hound", weight: 0.2 },
-    { kind: "deathmoth", weight: 0.3 },
-    { kind: "duller", weight: 0.2 },
+    { kind: "lurker", weight: 0.28 },
+    { kind: "hound", weight: 0.18 },
+    { kind: "deathmoth", weight: 0.28 },
+    { kind: "duller", weight: 0.16 },
+    // Entity-5 favours dank industrial nooks — the Clump's tangled drift is
+    // exactly what a pipe-maze junction hides best.
+    { kind: "clump", weight: 0.1 },
   ],
   3: [
     { kind: "lurker", weight: 0.88 },
     { kind: "hound", weight: 0.12 },
   ],
   4: [
-    { kind: "lurker", weight: 0.8 },
-    { kind: "wretch", weight: 0.2 },
+    { kind: "lurker", weight: 0.72 },
+    { kind: "wretch", weight: 0.18 },
+    // A Clump dragged along in the wake of whatever runs this stretch —
+    // rare, slow, and the one thing here you can't out-wait.
+    { kind: "clump", weight: 0.1 },
   ],
   5: [
-    { kind: "lurker", weight: 0.25 },
-    { kind: "faceling", weight: 0.3 },
-    { kind: "partygoer", weight: 0.2 },
+    { kind: "lurker", weight: 0.22 },
+    { kind: "faceling", weight: 0.28 },
+    { kind: "partygoer", weight: 0.18 },
     { kind: "deathmoth", weight: 0.1 },
-    { kind: "wretch", weight: 0.15 },
+    { kind: "wretch", weight: 0.12 },
+    // The Beast of Level 5 (entity-21) — canonically below the boiler rooms;
+    // rare enough that meeting one reads as the hotel's worst-case night.
+    { kind: "beast", weight: 0.1 },
   ],
   6: [
     { kind: "lurker", weight: 0.25 },
     { kind: "smiler", weight: 0.35 },
     { kind: "duller", weight: 0.25 },
     { kind: "hound", weight: 0.15 },
+  ],
+  // Level 9 "The Suburbs": the Neighborhood Watch is the level's signature
+  // entity per the wiki page; Facelings house-sit the furnished homes, and
+  // Hound packs cross the yards at night.
+  7: [
+    { kind: "lurker", weight: 0.2 },
+    { kind: "watcher", weight: 0.4 },
+    { kind: "faceling", weight: 0.25 },
+    { kind: "hound", weight: 0.15 },
+  ],
+  // "Level Fun =)": Partygoer territory, wall to wall — the wiki is blunt
+  // that this level belongs to entity-67. A few Facelings in party hats and
+  // stray Deathmoths drawn to the fairy lights round it out.
+  8: [
+    { kind: "partygoer", weight: 0.55 },
+    { kind: "faceling", weight: 0.2 },
+    { kind: "lurker", weight: 0.15 },
+    { kind: "deathmoth", weight: 0.1 },
   ],
 };
 

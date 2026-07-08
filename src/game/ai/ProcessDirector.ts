@@ -9,7 +9,9 @@
  * Duplicated entries weight the roll — flicker/whisper/thud/footsteps stay
  * the common beat; scream/static/laugh/moan/bang/flash/howl are rarer jolts;
  * knock (three deliberate raps from inside a wall), breath (an exhale right
- * at your ear), shadow (a silhouette darting across the fog rim) and
+ * at your ear), scratch (nails dragged along the far side of a wall), shadow
+ * (a silhouette darting across the fog rim), humstop (the fluorescent drone
+ * — the one constant of the Backrooms — just *stops* for a few seconds) and
  * lightsout (a long total-darkness wave with footsteps closing in) are the
  * rarest, biggest beats.
  */
@@ -32,8 +34,11 @@ export const ANOMALY_TYPES = [
   "knock",
   "knock",
   "breath",
+  "scratch",
+  "scratch",
   "shadow",
   "shadow",
+  "humstop",
   "lightsout",
 ] as const;
 export type AnomalyType = (typeof ANOMALY_TYPES)[number];

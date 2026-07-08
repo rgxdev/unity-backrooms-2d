@@ -326,6 +326,89 @@ export const LEVEL_LORE: Record<number, readonly LoreEntry[]> = {
         "honest light down here. Head for it and don't stop to make sure.",
     },
   ],
+
+  // Level 9 — The Suburbs
+  7: [
+    {
+      kind: "book",
+      title: "M.E.G. Field Guide — Entry: The Suburbs",
+      body:
+        "Designation: Level 9. Residential streets under a starless 3 AM " +
+        "sky that never advances. Houses are furnished, stocked, and empty. " +
+        "Entering one is survivable; being seen entering one is not. The " +
+        "figures at the windows are catalogued as the Neighborhood Watch — " +
+        "do not wave back, do not run until it steps off the porch.",
+    },
+    {
+      kind: "letter",
+      title: "Note Pinned to a Door",
+      body:
+        "The fridge was full and the milk wasn't even warm. Slept in a real " +
+        "bed for the first time since I fell through. Woke up because the " +
+        "porch light came on. I never found a switch for the porch light. " +
+        "I went out the back window and I am not going back for my boots.",
+    },
+    {
+      kind: "letter",
+      title: "Neighborhood Newsletter?",
+      body:
+        "Found it in a mailbox, fresh print, no date: 'A WARM WELCOME TO " +
+        "OUR NEWEST RESIDENT. WE HAVE ALL NOTICED YOU. WE LOOK FORWARD TO " +
+        "MEETING YOU SOON.' There's no name on it. There didn't need to be.",
+    },
+    {
+      kind: "letter",
+      title: "Chalk on Asphalt",
+      body:
+        "Kids' hopscotch squares down the middle of the street, chalk still " +
+        "bright. The numbers go 1, 2, 3, then in the same careful hand: " +
+        "DON'T LOOK AT THE WINDOWS. I counted my steps the rest of the " +
+        "block and didn't look up once.",
+    },
+  ],
+
+  // Level Fun =)
+  8: [
+    {
+      kind: "book",
+      title: "M.E.G. Field Guide — Entry: Level Fun",
+      body:
+        "Designation: unindexed — the door only reads 'FUN =)'. Streamers, " +
+        "balloons, sheet cake, music from no visible speakers. Populated " +
+        "almost exclusively by entity-67, the Partygoers. They are not " +
+        "hostile in any way they understand: they want you at the party, " +
+        "and the party does not end, and neither do its guests. Decline. " +
+        "Keep declining. Leave before the singing starts.",
+    },
+    {
+      kind: "letter",
+      title: "RSVP Card, Half-Filled",
+      body:
+        "It asked for my name and I almost wrote it. That's the thing " +
+        "nobody warns you about — the handwriting on the card is yours. " +
+        "The tick-box options are 'YES' and 'YES!!'. I put the pen down " +
+        "and my hand ached like I'd been holding it for hours.",
+    },
+    {
+      kind: "letter",
+      title: "Icing on the Back of a Napkin",
+      body:
+        "Marchetti's kid brother made it here from the hotel. Recognised " +
+        "his jacket on one of them under the banner. It waved at me with " +
+        "both arms, the way he used to. The smile is painted on, but the " +
+        "wave was his. Don't come here looking for anyone. They're all " +
+        "still here and none of them are.",
+    },
+    {
+      kind: "letter",
+      title: "Setlist, Crayon",
+      body:
+        "Song one: HAPPY BIRTHDAY. Song two: HAPPY BIRTHDAY. Song three " +
+        "just says YOUR SONG. The music has been between songs since I got " +
+        "here. If it starts again while you're still inside, the third one " +
+        "is for you. Run on the downbeat — they all close their eyes to sing.",
+    },
+  ],
 };
 
 /** Falls back to Level 0's document pool for any level index without its own

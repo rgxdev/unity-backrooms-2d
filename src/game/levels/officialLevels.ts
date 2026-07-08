@@ -68,7 +68,8 @@ export const OFFICIAL_LEVELS: readonly OfficialLevel[] = [
     index: 4,
     id: "level-4",
     name: "Level 4 — Run For Your Life",
-    blurb: "Scorched concrete and hazard tape. It knows you are here. Do not stop.",
+    blurb:
+      "Scorched concrete and hazard tape. It knows you are here. Do not stop.",
     theme: { tint: 0xffffff, fog: 0x0c0604, style: "hazard" },
   },
   {
@@ -90,6 +91,28 @@ export const OFFICIAL_LEVELS: readonly OfficialLevel[] = [
       "beam whole. You'll hear the grin before you see it — and by then " +
       "it has already seen you. Keep a wall at your back and move.",
     theme: { tint: 0xffffff, fog: 0x020204, style: "lightsout" },
+  },
+  {
+    index: 7,
+    id: "level-9",
+    name: "Level 9 — The Suburbs",
+    blurb:
+      "An endless residential street at permanent 3 AM. Every house is " +
+      "furnished, every bed is made, and nobody is home — but the " +
+      "Neighborhood Watch is, and it has decided you don't live here. " +
+      "Stay off the lawns. Don't knock. Don't answer if something knocks first.",
+    theme: { tint: 0xffffff, fog: 0x04060c, style: "suburbs" },
+  },
+  {
+    index: 8,
+    id: "level-fun",
+    name: "Level Fun =)",
+    blurb:
+      "Streamers, balloons, and cake that is always fresh. The music never " +
+      "stops and the hosts never stop smiling — they only want you to join " +
+      "the party, forever. Whatever you do, do not eat the cake, do not " +
+      "take the hug, and do not let them sing to you.",
+    theme: { tint: 0xffffff, fog: 0x0c0806, style: "fun" },
   },
 ];
 

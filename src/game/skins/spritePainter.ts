@@ -11,11 +11,32 @@ export type Facing = "front" | "back";
  */
 export interface PaintSurface {
   /** Fill a pixel-aligned rect. */
-  px(color: number, x: number, y: number, w?: number, h?: number, alpha?: number): void;
+  px(
+    color: number,
+    x: number,
+    y: number,
+    w?: number,
+    h?: number,
+    alpha?: number,
+  ): void;
   /** Corner-clipped rect — the "rounded silhouette" pixel-art trick. */
-  rr(color: number, x: number, y: number, w: number, h: number, alpha?: number): void;
+  rr(
+    color: number,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    alpha?: number,
+  ): void;
   /** Filled ellipse centred on (cx, cy). */
-  ellipse(color: number, cx: number, cy: number, w: number, h: number, alpha?: number): void;
+  ellipse(
+    color: number,
+    cx: number,
+    cy: number,
+    w: number,
+    h: number,
+    alpha?: number,
+  ): void;
 }
 
 /** Sprite edge length in pixels (the canvas both renderers must provide). */
@@ -151,6 +172,40 @@ function paintAccessory(
       g.px(palette.shirtShade, 3, 0, s - 6, 1, 0.95);
       if (facing === "front") {
         g.px(palette.shirtHi, 4, 5, s - 8, 4, 0.95);
+      }
+      return;
+    case "chefhat":
+      // Tall white toque rising above the head, puffed at the crown —
+      // painted in the shirt's whites so it always matches the uniform.
+      g.rr(palette.shirt, 5, 0, s - 10, 3, 1);
+      g.px(palette.shirtHi, 6, 0, 2, 2, 0.8);
+      g.px(palette.shirtShade, 5, 3, s - 10, 1, 0.9);
+      return;
+    case "afro":
+      // A huge round cloud of hair swallowing the whole scalp, wider than
+      // the head itself — unmistakable even at sprite scale.
+      g.ellipse(palette.hair, s / 2, 3, s - 4, 7, 1);
+      g.px(palette.hairHi, 5, 1, 3, 1, 0.7);
+      g.px(palette.hairHi, s - 8, 2, 2, 1, 0.6);
+      // A red rubber nose, dead centre of the face.
+      if (facing === "front") g.px(0xd84040, s / 2 - 1, 7, 2, 2, 1);
+      return;
+    case "partyhat":
+      // A jaunty tilted paper cone in the accent highlight, with a pom-pom.
+      g.px(palette.shirtHi, s - 8, 2, 3, 2, 1);
+      g.px(palette.shirtHi, s - 7, 0, 2, 2, 1);
+      g.px(palette.shirtShade, s - 7, 3, 3, 1, 0.8);
+      g.px(palette.hairHi, s - 6, 0, 1, 1, 1);
+      return;
+    case "headset":
+      // A radio headset: band over the crown, earcups both sides, and a
+      // thin boom mic toward the mouth when facing the camera.
+      g.px(palette.shirtShade, 4, 0, s - 8, 1, 0.95);
+      g.px(palette.shirtShade, 3, 2, 2, 4, 1);
+      g.px(palette.shirtShade, s - 5, 2, 2, 4, 1);
+      if (facing === "front") {
+        g.px(palette.shirtHi, 5, 6, 3, 1, 0.9);
+        g.px(palette.shirtHi, 8, 7, 2, 1, 0.9);
       }
       return;
   }

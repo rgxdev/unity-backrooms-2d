@@ -169,6 +169,45 @@ export const PARTYGOER_TUNING: MonsterTuning = {
   reachRadius: 6,
 };
 
+/** The Watcher ("Neighborhood Watch", wiki level-9) — tall, pale, and patient;
+ *  it stands in yards and windows until it decides you don't belong. Long
+ *  sight (those eyes never blink), fast committed chase once it commits. */
+export const WATCHER_TUNING: MonsterTuning = {
+  ai: DEFAULT_AI_CONFIG,
+  patrolSpeed: 50,
+  chaseSpeed: 145,
+  searchSpeed: 88,
+  sightRange: 300,
+  hearingRange: 190,
+  reachRadius: 6,
+};
+
+/** The Clump (wiki entity-5) — a drifting tangle of fused limbs. It never
+ *  hurries and never walks; it just closes, silently, at its one fixed pace.
+ *  Short senses — it isn't hunting so much as absorbing whatever wanders in. */
+export const CLUMP_TUNING: MonsterTuning = {
+  ai: DEFAULT_AI_CONFIG,
+  patrolSpeed: 30,
+  chaseSpeed: 78,
+  searchSpeed: 40,
+  sightRange: 180,
+  hearingRange: 140,
+  reachRadius: 6,
+};
+
+/** The Beast of Level 5 (wiki entity-21) — the horned shadow below the Terror
+ *  Hotel's boiler rooms. Rarely seen, never survived up close: the fastest
+ *  chase of any roster kind, with hearing to match a hotel's echoing halls. */
+export const BEAST_TUNING: MonsterTuning = {
+  ai: DEFAULT_AI_CONFIG,
+  patrolSpeed: 56,
+  chaseSpeed: 168,
+  searchSpeed: 105,
+  sightRange: 230,
+  hearingRange: 260,
+  reachRadius: 6,
+};
+
 /**
  * Every distinct monster identity a level spawn can carry. `lurker` is the
  * generic ambient default; `pursuer` is the level-agnostic scripted chase
@@ -187,4 +226,7 @@ export type MonsterKind =
   | "deathmoth"
   | "duller"
   | "wretch"
-  | "partygoer";
+  | "partygoer"
+  | "watcher"
+  | "clump"
+  | "beast";

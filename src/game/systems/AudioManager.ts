@@ -547,6 +547,44 @@ export class AudioManager {
     src.stop(t + 0.5);
   }
 
+  /** Nails dragged slowly along the far side of a wall — four or five thin,
+   *  uneven scrapes descending in pitch, each one a short scoured noise band.
+   *  Distinct from {@link knock}'s patient raps: this one is moving. */
+  scratch(pan = 0): void {
+    const ctx = this.context;
+    if (!ctx || this.masterVolume <= 0) return;
+    const scrapes = 4 + Math.floor(Math.random() * 2);
+    let t = ctx.currentTime;
+    for (let i = 0; i < scrapes; i++) {
+      const duration = 0.14 + Math.random() * 0.12;
+      const length = Math.max(1, Math.floor(ctx.sampleRate * duration));
+      const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let j = 0; j < length; j++) data[j] = Math.random() * 2 - 1;
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.Q.value = 9;
+      // Each scrape starts high and drags downward — nails losing purchase.
+      filter.frequency.setValueAtTime(2600 - i * 260, t);
+      filter.frequency.exponentialRampToValueAtTime(
+        1100 - i * 90,
+        t + duration,
+      );
+      const gain = ctx.createGain();
+      const peak = Math.max(0.0001, 0.22 * this.masterVolume);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(peak, t + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+      src.connect(filter).connect(gain);
+      this.connectOut(gain, ctx, pan);
+      src.start(t);
+      src.stop(t + duration + 0.02);
+      t += duration + 0.05 + Math.random() * 0.08;
+    }
+  }
+
   /** The power gutters — a dry electrical crackle under the blackout flicker,
    *  distinct from {@link flicker}'s light-stutter crackle. */
   staticBurst(intensity = 0.35): void {

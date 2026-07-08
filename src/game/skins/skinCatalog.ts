@@ -29,7 +29,11 @@ export type AccessoryKind =
   | "helmet"
   | "hardhat"
   | "visor"
-  | "cross";
+  | "cross"
+  | "chefhat"
+  | "afro"
+  | "partyhat"
+  | "headset";
 
 export interface SkinDefinition {
   id: string;
@@ -68,7 +72,11 @@ const shade = (hex: number): number => tone(hex, 0.72, 0);
  *  different gear — but with their own hair colour and accessory (see
  *  `AccessoryKind`) so each skin is unmistakably its own texture rather
  *  than a near-identical recolour. */
-function gearPalette(shirt: number, pants: number, hair: number): PlayerPalette {
+function gearPalette(
+  shirt: number,
+  pants: number,
+  hair: number,
+): PlayerPalette {
   return {
     skin: COLORS.playerSkin,
     skinShade: COLORS.playerSkinShade,
@@ -147,7 +155,8 @@ export const SKINS: readonly SkinDefinition[] = [
   {
     id: "hotel-crimson",
     name: "Hotel Bellhop",
-    description: "Wine-red livery with brass trim — earned by escaping Level 5.",
+    description:
+      "Wine-red livery with brass trim — earned by escaping Level 5.",
     palette: gearPalette(0x8c2432, 0x3a1218, 0x1f1210),
     accessory: "cap",
     unlockLevel: 5,
@@ -160,20 +169,46 @@ export const SKINS: readonly SkinDefinition[] = [
     accessory: "hood",
     unlockLevel: 6,
   },
+  {
+    id: "suburb-navy",
+    name: "Night Neighbor",
+    description:
+      "Streetlamp-pale windbreaker over midnight navy — earned by escaping Level 9.",
+    palette: {
+      ...gearPalette(0x3a4a6e, 0x1e2436, 0x2a2418),
+      shirtHi: 0xb8c4d8,
+    },
+    accessory: "hood",
+    unlockLevel: 7,
+  },
+  {
+    id: "party-crasher",
+    name: "Party Crasher",
+    description:
+      "Confetti-stained yellows and a paper cone hat — earned by escaping Level Fun. You didn't RSVP.",
+    palette: {
+      ...gearPalette(0xe4c94a, 0x8a6e2a, 0x4a3018),
+      shirtHi: 0xd0568e,
+    },
+    accessory: "partyhat",
+    unlockLevel: 8,
+  },
 
   // ——— Wardrobe set: who you were before you noclipped. Always available
   // (no unlockLevel) — pure flavour, not progression rewards.
   {
     id: "police",
     name: "Police Officer",
-    description: "Navy uniform and duty cap — you were mid-patrol when the floor gave way.",
+    description:
+      "Navy uniform and duty cap — you were mid-patrol when the floor gave way.",
     palette: gearPalette(0x2c4a78, 0x1c2a44, 0x2a2018),
     accessory: "cap",
   },
   {
     id: "firefighter",
     name: "Firefighter",
-    description: "Turnout gear with reflective trim — the alarm was real, the building wasn't.",
+    description:
+      "Turnout gear with reflective trim — the alarm was real, the building wasn't.",
     palette: {
       ...gearPalette(0xb03a28, 0x4c1e16, 0x3a2a1a),
       shirtHi: 0xe8c33a,
@@ -184,7 +219,8 @@ export const SKINS: readonly SkinDefinition[] = [
   {
     id: "paramedic",
     name: "Paramedic",
-    description: "White response uniform, red cross — someone here still needs help.",
+    description:
+      "White response uniform, red cross — someone here still needs help.",
     palette: {
       ...gearPalette(0xe4e6ea, 0x3a3f48, 0x4a3a26),
       shirtHi: 0xd84040,
@@ -195,7 +231,8 @@ export const SKINS: readonly SkinDefinition[] = [
   {
     id: "construction",
     name: "Construction Worker",
-    description: "Hi-vis orange and a hard hat — you know load-bearing walls. These aren't.",
+    description:
+      "Hi-vis orange and a hard hat — you know load-bearing walls. These aren't.",
     palette: {
       ...gearPalette(0xd87c2a, 0x3f3a34, 0x2e2418),
       shirtHi: 0xf2d43a,
@@ -205,7 +242,8 @@ export const SKINS: readonly SkinDefinition[] = [
   {
     id: "hazmat",
     name: "Hazmat Specialist",
-    description: "Sealed yellow suit — whatever leaked in here, it wasn't on your checklist.",
+    description:
+      "Sealed yellow suit — whatever leaked in here, it wasn't on your checklist.",
     palette: {
       ...gearPalette(0xd4c032, 0xb0a028, 0x2a2a2a),
       hair: 0xd4c032,
@@ -217,9 +255,80 @@ export const SKINS: readonly SkinDefinition[] = [
   {
     id: "security",
     name: "Security Guard",
-    description: "Black shift uniform — you watched the monitors. Something watched back.",
+    description:
+      "Black shift uniform — you watched the monitors. Something watched back.",
     palette: gearPalette(0x2c2c34, 0x1a1a20, 0x1e1a16),
     accessory: "cap",
+  },
+  {
+    id: "chef",
+    name: "Chef",
+    description:
+      "Double-breasted whites and a toque — service never ended, the kitchen just stopped existing.",
+    palette: {
+      ...gearPalette(0xeceae2, 0x3a3c40, 0x3a2a1a),
+      shirtShade: 0xb8b4a8,
+    },
+    accessory: "chefhat",
+  },
+  {
+    id: "soldier",
+    name: "Soldier",
+    description:
+      "Olive fatigues and a combat helmet — trained for everything except a hallway with no end.",
+    palette: gearPalette(0x55603a, 0x33381f, 0x241e12),
+    accessory: "helmet",
+  },
+  {
+    id: "prisoner",
+    name: "Prisoner",
+    description:
+      "Orange jumpsuit, no number — one wall stopped being a wall, and you didn't argue.",
+    palette: gearPalette(0xd8742a, 0x9e5018, 0x1e1a16),
+    accessory: "none",
+  },
+  {
+    id: "astronaut",
+    name: "Astronaut",
+    description:
+      "White EVA suit, gold visor — you've trained for isolation. Not for this kind.",
+    palette: {
+      ...gearPalette(0xe8eaee, 0xc4c8d0, 0xd8d8dc),
+      hair: 0xe8eaee,
+      hairHi: 0xffffff,
+      shirtHi: 0xe0b840,
+    },
+    accessory: "visor",
+  },
+  {
+    id: "doctor",
+    name: "Doctor",
+    description:
+      "Teal scrubs and a surgical mask — mid-shift, mid-corridor, and then the corridor kept going.",
+    palette: gearPalette(0x3f8f8a, 0x2a5a56, 0x2a2018),
+    accessory: "mask",
+  },
+  {
+    id: "clown",
+    name: "Clown",
+    description:
+      "Polka-dot suit and a red rubber nose — the birthday gig noclipped with you. Nobody's laughing.",
+    palette: {
+      ...gearPalette(0xd84040, 0x3a5ac4, 0xd8742a),
+      shirtHi: 0xf2d43a,
+    },
+    accessory: "afro",
+  },
+  {
+    id: "pilot",
+    name: "Pilot",
+    description:
+      "Airline blues, gold trim, radio headset — cleared for a runway that no longer exists.",
+    palette: {
+      ...gearPalette(0x2a3a5e, 0x1a2338, 0x3a2a1a),
+      shirtHi: 0xd8b84a,
+    },
+    accessory: "headset",
   },
 ];
 
